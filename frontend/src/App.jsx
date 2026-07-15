@@ -12,12 +12,25 @@ import Login from './components/Login';
 import AccountSettings from './components/AccountSettings';
 
 
-// Intercept all fetch requests globally to inject JWT token
+// Intercept all fetch requests globally to inject JWT token and dynamically translate API URLs
 const originalFetch = window.fetch;
 window.fetch = async function (url, options = {}) {
   const token = localStorage.getItem('token');
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   
-  if (url.toString().includes('http://localhost:8000')) {
+  let fetchUrl = url;
+  if (typeof url === 'string') {
+    fetchUrl = url.replace('http://localhost:8000', apiBase);
+  } else if (url instanceof URL) {
+    fetchUrl = new URL(url.toString().replace('http://localhost:8000', apiBase));
+  } else if (url && typeof url === 'object' && 'url' in url) {
+    fetchUrl = url.url.replace('http://localhost:8000', apiBase);
+  }
+
+  const urlStr = typeof fetchUrl === 'string' ? fetchUrl : fetchUrl.toString();
+  const isApiRequest = urlStr.includes(apiBase);
+
+  if (isApiRequest) {
     options.headers = {
       ...options.headers,
     };
@@ -26,9 +39,9 @@ window.fetch = async function (url, options = {}) {
     }
   }
 
-  const response = await originalFetch(url, options);
+  const response = await originalFetch(fetchUrl, options);
 
-  if (response.status === 401 && url.toString().includes('http://localhost:8000') && !url.toString().includes('/auth/')) {
+  if (response.status === 401 && isApiRequest && !urlStr.includes('/auth/')) {
     localStorage.removeItem('token');
     localStorage.removeItem('userEmail');
     window.location.reload();
