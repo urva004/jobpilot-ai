@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional, List, Dict, Any, Union
 import json
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -59,7 +60,7 @@ from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import status
 from app.models import User, OtpToken
-from app.schemas import UserSignup, UserLogin, TokenResponse, UserResponse, VerifyEmailRequest, ResendOtpRequest, ForgotPasswordRequest, ResetPasswordRequest
+from app.schemas import UserSignup, UserLogin, TokenResponse, UserResponse, VerifyEmailRequest, ResendOtpRequest, ForgotPasswordRequest, ResetPasswordRequest, GuestProfileSchema, CandidateProfileImport
 from app.config import JWT_SECRET_KEY, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
 SECRET_KEY = JWT_SECRET_KEY
@@ -115,6 +116,22 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+
+def get_current_user_optional(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """Returns the current user if authenticated, or None for guest access."""
+    if not token:
+        return None
+    try:
+        if token.startswith("Bearer "):
+            token = token[7:]
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            return None
+    except JWTError:
+        return None
+    return db.query(User).filter(User.id == user_id).first()
 
 # Initialize database tables
 Base.metadata.create_all(bind=engine)
@@ -311,7 +328,20 @@ def auth_login(payload: UserLogin, request: Request, db: Session = Depends(get_d
         raise HTTPException(status_code=401, detail="Invalid email or password.")
     
     if not user.is_verified:
-        raise HTTPException(status_code=403, detail="Please verify your email address before logging in.")
+        import random
+        otp_code = f"{random.randint(100000, 999999)}"
+        otp_hash = get_password_hash(otp_code)
+        otp_token = OtpToken(
+            id=str(uuid.uuid4()),
+            email=user.email,
+            otp_hash=otp_hash,
+            purpose="verify_email",
+            expires_at=datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
+        )
+        db.add(otp_token)
+        db.commit()
+        send_otp_email(user.email, otp_code, "verify_email")
+        raise HTTPException(status_code=403, detail="Please verify your email address. We have sent a verification code to your email.")
     
     access_token = create_access_token(
         data={"sub": user.id},
@@ -514,9 +544,10 @@ def auth_delete_account(
 
 
 @app.post("/resume/upload", response_model=CandidateProfileResponse)
-async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Feature 5: rate limit uploads
-    rate_limit_upload(current_user.id, "/resume/upload")
+async def upload_resume(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user_optional)):
+    # Feature 5: rate limit uploads (use IP if guest)
+    user_key = current_user.id if current_user else request.client.host
+    rate_limit_upload(user_key, "/resume/upload")
 
     if not file.filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
@@ -549,10 +580,27 @@ async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_
         except Exception:
             confidence_obj = None
 
-    try:
-        # Save parsed resume to SQLite
-        profile_id = str(uuid.uuid4())
+    profile_id = str(uuid.uuid4())
 
+    if not current_user:
+        # For guests, do not save to database. Return parsed details directly.
+        return CandidateProfileResponse(
+            id=profile_id,
+            raw_resume_text=raw_text,
+            skills=profile_data.get("skills", []),
+            projects=profile_data.get("projects", []),
+            education=profile_data.get("education", []),
+            experience=profile_data.get("experience", []),
+            certifications=profile_data.get("certifications", []),
+            links=profile_data.get("links", {}),
+            resume_filename=file.filename,
+            resume_filepath=None,
+            confidence=confidence_obj,
+            created_at=datetime.datetime.utcnow()
+        )
+
+    try:
+        # Save parsed resume to SQLite for logged in users
         import os
         uploads_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
         os.makedirs(uploads_dir, exist_ok=True)
@@ -601,11 +649,71 @@ async def upload_resume(file: UploadFile = File(...), db: Session = Depends(get_
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
+
+@app.post("/resume/import", response_model=CandidateProfileResponse)
+def import_resume(payload: CandidateProfileImport, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Persist a guest parsed profile to the database under the logged-in user."""
+    profile_id = str(uuid.uuid4())
+    confidence_json = json.dumps(payload.confidence) if payload.confidence else None
+
+    db_profile = CandidateProfile(
+        id=profile_id,
+        raw_resume_text=payload.raw_resume_text,
+        skills=json.dumps(payload.skills),
+        projects=json.dumps(payload.projects),
+        education=json.dumps(payload.education),
+        experience=json.dumps(payload.experience),
+        certifications=json.dumps(payload.certifications),
+        links=json.dumps(payload.links),
+        resume_filename=payload.resume_filename or "Guest Resume",
+        resume_filepath=None,
+        confidence_json=confidence_json,
+        user_id=current_user.id
+    )
+
+    try:
+        db.add(db_profile)
+        db.commit()
+        db.refresh(db_profile)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error during import: {str(e)}")
+
+    confidence_obj = None
+    if payload.confidence:
+        try:
+            confidence_obj = ConfidenceScores(
+                skills=float(payload.confidence.get("skills", 0.0)),
+                experience=float(payload.confidence.get("experience", 0.0)),
+                education=float(payload.confidence.get("education", 0.0)),
+                overall=float(payload.confidence.get("overall", 0.0)),
+            )
+        except Exception:
+            confidence_obj = None
+
+    return CandidateProfileResponse(
+        id=db_profile.id,
+        raw_resume_text=db_profile.raw_resume_text,
+        skills=json.loads(db_profile.skills) if db_profile.skills else [],
+        projects=json.loads(db_profile.projects) if db_profile.projects else [],
+        education=json.loads(db_profile.education) if db_profile.education else [],
+        experience=json.loads(db_profile.experience) if db_profile.experience else [],
+        certifications=json.loads(db_profile.certifications) if db_profile.certifications else [],
+        links=json.loads(db_profile.links) if db_profile.links else {},
+        resume_filename=db_profile.resume_filename,
+        resume_filepath=db_profile.resume_filepath,
+        confidence=confidence_obj,
+        created_at=db_profile.created_at
+    )
+
+
 @app.get("/resume/active", response_model=CandidateProfileResponse)
-def get_active_resume(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_active_resume(db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user_optional)):
+    if not current_user:
+        raise HTTPException(status_code=404, detail="No active profile found")
     db_profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
     if not db_profile:
-        raise HTTPException(status_code=404, detail="No resume uploaded yet")
+        raise HTTPException(status_code=404, detail="No active profile found")
 
     # Feature 3: deserialize confidence scores if stored
     confidence_obj = None
@@ -637,13 +745,11 @@ def get_active_resume(db: Session = Depends(get_db), current_user: User = Depend
     )
 
 
-
-
 @app.post("/jobs/search", response_model=list[JobResponse])
-def search_jobs(payload: JobSearchRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def search_jobs(request: Request, payload: JobSearchRequest, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user_optional)):
     import re
-    # Feature 5: rate limit job search (Adzuna/JSearch quota protection)
-    rate_limit_search(current_user.id, "/jobs/search")
+    user_key = current_user.id if current_user else request.client.host
+    rate_limit_search(user_key, "/jobs/search")
     try:
         jobs = JobService.search_and_save(
             db=db,
@@ -682,51 +788,61 @@ def search_jobs(payload: JobSearchRequest, db: Session = Depends(get_db), curren
 
 
 @app.post("/jobs/match", response_model=JobMatchResponse)
-def match_job(payload: JobMatchRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    import re, time
-    # Feature 5: rate limit Mistral calls
-    rate_limit_mistral(current_user.id, "/jobs/match")
+def match_job(request: Request, payload: JobMatchRequest, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user_optional)):
+    import re, time, hashlib
+    # Feature 5: rate limit Mistral calls (use IP if guest)
+    user_key = current_user.id if current_user else request.client.host
+    rate_limit_mistral(user_key, "/jobs/match")
 
     # ── Step 1: Fetch profile and job ─────────────────────────────────────────
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
-    if not profile:
-        raise HTTPException(status_code=400, detail="Please upload your resume profile first before matching.")
+    if current_user:
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
+        if not profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume profile first before matching.")
+        resume_text = profile.raw_resume_text or ""
+        profile_id = profile.id
+    else:
+        if not payload.guest_profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume profile first before matching.")
+        profile = payload.guest_profile
+        resume_text = profile.raw_resume_text or ""
+        profile_id = f"guest_{hashlib.md5(resume_text.encode('utf-8')).hexdigest()}"
 
     job = db.query(Job).filter(Job.id == payload.job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found in database.")
 
-    # ── Feature 2: Check cache (user_id + job_id + profile_id) ───────────────
-    cached_entry = db.query(JobMatchCache).filter(
-        JobMatchCache.user_id == current_user.id,
-        JobMatchCache.job_id == payload.job_id,
-        JobMatchCache.profile_id == profile.id
-    ).first()
-    if cached_entry:
-        print(f"[MATCH user={current_user.id[:8]} job={payload.job_id[:8]}] CACHE HIT — returning cached result")
-        cached_result = json.loads(cached_entry.result_json)
-        return JobMatchResponse(
-            job_id=payload.job_id,
-            match_percent=cached_result.get("match_percent", 0.0),
-            missing_skills=cached_result.get("missing_skills", []),
-            strengths=cached_result.get("strengths", []),
-            weaknesses=cached_result.get("weaknesses", []),
-            cached=True
-        )
+    # ── Feature 2: Check cache (only for logged-in users) ──────────────────────
+    if current_user:
+        cached_entry = db.query(JobMatchCache).filter(
+            JobMatchCache.user_id == current_user.id,
+            JobMatchCache.job_id == payload.job_id,
+            JobMatchCache.profile_id == profile_id
+        ).first()
+        if cached_entry:
+            print(f"[MATCH user={current_user.id[:8]} job={payload.job_id[:8]}] CACHE HIT — returning cached result")
+            cached_result = json.loads(cached_entry.result_json)
+            return JobMatchResponse(
+                job_id=payload.job_id,
+                match_percent=cached_result.get("match_percent", 0.0),
+                missing_skills=cached_result.get("missing_skills", []),
+                strengths=cached_result.get("strengths", []),
+                weaknesses=cached_result.get("weaknesses", []),
+                cached=True
+            )
 
     t_start = time.monotonic()
-    log_prefix = f"[MATCH user={current_user.id[:8]} job={job.id[:8]}]"
+    log_prefix = f"[MATCH user={user_key[:8]} job={job.id[:8]}]"
 
     try:
         # ── Step 2(a): Semantic/vector retrieval (cheap — cached in ChromaDB) ─
-        resume_vec_id = f"resume_{profile.id}"
+        resume_vec_id = f"resume_{profile_id}"
         job_vec_id    = f"job_{job.id}"
 
         resume_vector = ChromaService.get_vector(resume_vec_id)
         if not resume_vector:
-            resume_text = profile.raw_resume_text or ""
             resume_vector = MistralService.get_embeddings([resume_text])[0]
-            ChromaService.upsert_vector(resume_vec_id, resume_vector, {"type": "resume", "profile_id": profile.id})
+            ChromaService.upsert_vector(resume_vec_id, resume_vector, {"type": "resume", "profile_id": profile_id})
 
         job_vector = ChromaService.get_vector(job_vec_id)
         if not job_vector:
@@ -738,8 +854,12 @@ def match_job(payload: JobMatchRequest, db: Session = Depends(get_db), current_u
         print(f"{log_prefix} step=vector similarity={similarity:.4f}")
 
         # ── Step 2(b): Hard filter — experience level vs. user preference ─────
-        sched_settings = db.query(SchedulerSettings).filter(SchedulerSettings.user_id == current_user.id).first()
-        exp_pref = getattr(sched_settings, "experience_level", "any") if sched_settings else "any"
+        if current_user:
+            sched_settings = db.query(SchedulerSettings).filter(SchedulerSettings.user_id == current_user.id).first()
+            exp_pref = getattr(sched_settings, "experience_level", "any") if sched_settings else "any"
+        else:
+            exp_pref = "any"
+            
         exp_filtered_out = False
         if exp_pref and exp_pref != "any" and job.experience_level not in ("unspecified", exp_pref):
             exp_filtered_out = True
@@ -755,7 +875,7 @@ def match_job(payload: JobMatchRequest, db: Session = Depends(get_db), current_u
         if similarity > SIMILARITY_THRESHOLD and not exp_filtered_out:
             print(f"{log_prefix} step=llm_gate PASSED — calling Mistral analyze_job_match")
             analysis = MistralService.analyze_job_match(
-                resume_text=profile.raw_resume_text or "",
+                resume_text=resume_text,
                 job_description=job.description or ""
             )
             mistral_called = True
@@ -771,9 +891,9 @@ def match_job(payload: JobMatchRequest, db: Session = Depends(get_db), current_u
             scaled = 30 + ((similarity - min_val) / (max_val - min_val)) * 68
             semantic_score = float(round(min(100.0, max(0.0, scaled)), 1))
 
-        if job.description and profile.raw_resume_text:
+        if job.description and resume_text:
             jd_words = set(re.findall(r'\b[a-zA-Z][a-zA-Z0-9+#.]{2,}\b', job.description.lower()))
-            resume_words = set(re.findall(r'\b[a-zA-Z][a-zA-Z0-9+#.]{2,}\b', (profile.raw_resume_text or "").lower()))
+            resume_words = set(re.findall(r'\b[a-zA-Z][a-zA-Z0-9+#.]{2,}\b', resume_text.lower()))
             if jd_words:
                 ats_overlap = len(jd_words & resume_words) / len(jd_words)
                 ats_score = round(ats_overlap * 100, 1)
@@ -795,20 +915,21 @@ def match_job(payload: JobMatchRequest, db: Session = Depends(get_db), current_u
             "weaknesses": analysis.get("weaknesses", []),
         }
 
-        # ── Feature 2: Write to cache ─────────────────────────────────────────
-        try:
-            cache_entry = JobMatchCache(
-                id=str(uuid.uuid4()),
-                user_id=current_user.id,
-                job_id=job.id,
-                profile_id=profile.id,
-                result_json=json.dumps(result_payload)
-            )
-            db.add(cache_entry)
-            db.commit()
-        except Exception as ce:
-            db.rollback()
-            print(f"{log_prefix} WARNING: failed to write match cache: {ce}")
+        # ── Feature 2: Write to cache (only for logged-in users) ───────────────
+        if current_user:
+            try:
+                cache_entry = JobMatchCache(
+                    id=str(uuid.uuid4()),
+                    user_id=current_user.id,
+                    job_id=job.id,
+                    profile_id=profile_id,
+                    result_json=json.dumps(result_payload)
+                )
+                db.add(cache_entry)
+                db.commit()
+            except Exception as ce:
+                db.rollback()
+                print(f"{log_prefix} WARNING: failed to write match cache: {ce}")
 
         return JobMatchResponse(
             job_id=job.id,
@@ -854,7 +975,7 @@ class JobPasteResponse(BaseModel):
     description: str
 
 @app.post("/jobs/save-paste", response_model=JobPasteResponse)
-def save_pasted_job(payload: JobPasteRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def save_pasted_job(payload: JobPasteRequest, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user_optional)):
     """Accept a manually pasted JD and save it so ATS / tailoring endpoints can use it."""
     import hashlib
     job_id = hashlib.md5(f"{payload.title}|{payload.description[:200]}".encode()).hexdigest()
@@ -870,7 +991,7 @@ def save_pasted_job(payload: JobPasteRequest, db: Session = Depends(get_db), cur
             salary_range="",
             description=payload.description,
             apply_url="",
-            user_id=current_user.id
+            user_id=current_user.id if current_user else None
         )
         db.add(db_job)
         db.commit()
@@ -879,7 +1000,7 @@ def save_pasted_job(payload: JobPasteRequest, db: Session = Depends(get_db), cur
 
 
 @app.get("/jobs/{job_id}")
-def get_job_by_id(job_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_job_by_id(job_id: str, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user_optional)):
     """Return a single job record by ID, with cached match result if available."""
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
@@ -888,24 +1009,25 @@ def get_job_by_id(job_id: str, db: Session = Depends(get_db), current_user: User
     from app.models import CandidateProfile
     from app.services.chroma_service import ChromaService
     match_data = None
-    try:
-        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
-        if profile:
-            resume_vec_id = f"resume_{profile.id}"
-            job_vec_id = f"job_{job.id}"
-            resume_vector = ChromaService.get_vector(resume_vec_id)
-            job_vector = ChromaService.get_vector(job_vec_id)
-            if resume_vector and job_vector:
-                similarity = ChromaService.compute_cosine_similarity(resume_vector, job_vector)
-                min_val, max_val = 0.3, 0.8
-                if similarity <= min_val:
-                    match_percent = float(round(similarity * 100, 1))
-                else:
-                    scaled = 30 + ((similarity - min_val) / (max_val - min_val)) * 68
-                    match_percent = float(round(min(100.0, max(0.0, scaled)), 1))
-                match_data = {"match_percent": match_percent}
-    except Exception:
-        pass
+    if current_user:
+        try:
+            profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
+            if profile:
+                resume_vec_id = f"resume_{profile.id}"
+                job_vec_id = f"job_{job.id}"
+                resume_vector = ChromaService.get_vector(resume_vec_id)
+                job_vector = ChromaService.get_vector(job_vec_id)
+                if resume_vector and job_vector:
+                    similarity = ChromaService.compute_cosine_similarity(resume_vector, job_vector)
+                    min_val, max_val = 0.3, 0.8
+                    if similarity <= min_val:
+                        match_percent = float(round(similarity * 100, 1))
+                    else:
+                        scaled = 30 + ((similarity - min_val) / (max_val - min_val)) * 68
+                        match_percent = float(round(min(100.0, max(0.0, scaled)), 1))
+                    match_data = {"match_percent": match_percent}
+        except Exception:
+            pass
 
     return {
         "id": job.id,
@@ -923,11 +1045,20 @@ def get_job_by_id(job_id: str, db: Session = Depends(get_db), current_user: User
 
 
 @app.post("/ats/score", response_model=ATSScoreResponse)
-def ats_score(payload: ATSScoreRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    rate_limit_mistral(current_user.id, "/ats/score")  # Feature 5
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
-    if not profile:
-        raise HTTPException(status_code=400, detail="Please upload your resume first.")
+def ats_score(request: Request, payload: ATSScoreRequest, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user_optional)):
+    # Feature 5: rate limit Mistral calls (use IP if guest)
+    user_key = current_user.id if current_user else request.client.host
+    rate_limit_mistral(user_key, "/ats/score")
+
+    if current_user:
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
+        if not profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume first.")
+        resume_text = profile.raw_resume_text or ""
+    else:
+        if not payload.guest_profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume first.")
+        resume_text = payload.guest_profile.raw_resume_text or ""
 
     job = db.query(Job).filter(Job.id == payload.job_id).first()
     if not job:
@@ -935,7 +1066,7 @@ def ats_score(payload: ATSScoreRequest, db: Session = Depends(get_db), current_u
 
     try:
         result = MistralService.ats_score(
-            resume_text=profile.raw_resume_text or "",
+            resume_text=resume_text,
             job_description=job.description or ""
         )
         return ATSScoreResponse(
@@ -950,11 +1081,20 @@ def ats_score(payload: ATSScoreRequest, db: Session = Depends(get_db), current_u
 
 
 @app.post("/resume/tailor", response_model=TailorResumeResponse)
-def tailor_resume(payload: TailorResumeRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    rate_limit_mistral(current_user.id, "/resume/tailor")  # Feature 5
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
-    if not profile:
-        raise HTTPException(status_code=400, detail="Please upload your resume first.")
+def tailor_resume(request: Request, payload: TailorResumeRequest, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user_optional)):
+    # Feature 5: rate limit Mistral calls (use IP if guest)
+    user_key = current_user.id if current_user else request.client.host
+    rate_limit_mistral(user_key, "/resume/tailor")
+
+    if current_user:
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
+        if not profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume first.")
+        resume_text = profile.raw_resume_text or ""
+    else:
+        if not payload.guest_profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume first.")
+        resume_text = payload.guest_profile.raw_resume_text or ""
 
     job = db.query(Job).filter(Job.id == payload.job_id).first()
     if not job:
@@ -962,7 +1102,7 @@ def tailor_resume(payload: TailorResumeRequest, db: Session = Depends(get_db), c
 
     try:
         result = MistralService.tailor_resume(
-            resume_text=profile.raw_resume_text or "",
+            resume_text=resume_text,
             job_description=job.description or ""
         )
         return TailorResumeResponse(
@@ -978,11 +1118,20 @@ def tailor_resume(payload: TailorResumeRequest, db: Session = Depends(get_db), c
 
 
 @app.post("/generate/cover-letter", response_model=CoverLetterResponse)
-def generate_cover_letter(payload: CoverLetterRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    rate_limit_mistral(current_user.id, "/generate/cover-letter")  # Feature 5
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
-    if not profile:
-        raise HTTPException(status_code=400, detail="Please upload your resume first.")
+def generate_cover_letter(request: Request, payload: CoverLetterRequest, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user_optional)):
+    # Feature 5: rate limit Mistral calls (use IP if guest)
+    user_key = current_user.id if current_user else request.client.host
+    rate_limit_mistral(user_key, "/generate/cover-letter")
+
+    if current_user:
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
+        if not profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume first.")
+        resume_text = profile.raw_resume_text or ""
+    else:
+        if not payload.guest_profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume first.")
+        resume_text = payload.guest_profile.raw_resume_text or ""
 
     job = db.query(Job).filter(Job.id == payload.job_id).first()
     if not job:
@@ -990,7 +1139,7 @@ def generate_cover_letter(payload: CoverLetterRequest, db: Session = Depends(get
 
     try:
         result = MistralService.generate_cover_letter(
-            resume_text=profile.raw_resume_text or "",
+            resume_text=resume_text,
             job_title=job.title or "",
             company=job.company or "",
             job_description=job.description or ""
@@ -1006,15 +1155,24 @@ def generate_cover_letter(payload: CoverLetterRequest, db: Session = Depends(get
 
 
 @app.post("/generate/email", response_model=GenerateEmailResponse)
-def generate_email(payload: GenerateEmailRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    rate_limit_mistral(current_user.id, "/generate/email")  # Feature 5
+def generate_email(request: Request, payload: GenerateEmailRequest, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user_optional)):
+    # Feature 5: rate limit Mistral calls (use IP if guest)
+    user_key = current_user.id if current_user else request.client.host
+    rate_limit_mistral(user_key, "/generate/email")
+
     valid_types = {"apply", "cold", "referral", "followup", "thankyou"}
     if payload.email_type not in valid_types:
         raise HTTPException(status_code=400, detail=f"email_type must be one of: {', '.join(valid_types)}")
 
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
-    if not profile:
-        raise HTTPException(status_code=400, detail="Please upload your resume first.")
+    if current_user:
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
+        if not profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume first.")
+        resume_text = profile.raw_resume_text or ""
+    else:
+        if not payload.guest_profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume first.")
+        resume_text = payload.guest_profile.raw_resume_text or ""
 
     job = db.query(Job).filter(Job.id == payload.job_id).first()
     if not job:
@@ -1022,7 +1180,7 @@ def generate_email(payload: GenerateEmailRequest, db: Session = Depends(get_db),
 
     try:
         result = MistralService.generate_email(
-            resume_text=profile.raw_resume_text or "",
+            resume_text=resume_text,
             job_title=job.title or "",
             company=job.company or "",
             job_description=job.description or "",
@@ -1287,32 +1445,28 @@ def trigger_scheduler_matching(db: Session = Depends(get_db), current_user: User
 # ─── Phase 8: Interview Prep Generator ──────────────────────────────────────────────────
 
 @app.post("/interview/prep", response_model=InterviewPrepResponse)
-def generate_interview_prep(payload: InterviewPrepRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def generate_interview_prep(payload: InterviewPrepRequest, db: Session = Depends(get_db), current_user: Optional[User] = Depends(get_current_user_optional)):
     """Generate or return cached interview questions for a specific job."""
-    # 1. Check cache first
-    cached = db.query(InterviewPrep).filter(InterviewPrep.job_id == payload.job_id, InterviewPrep.user_id == current_user.id).first()
-    if cached:
-        result = json.loads(cached.result_json)
-        return InterviewPrepResponse(
-            job_id=payload.job_id,
-            technical_questions=result.get("technical_questions", []),
-            coding_questions=result.get("coding_questions", []),
-            system_design_questions=result.get("system_design_questions", []),
-            hr_questions=result.get("hr_questions", []),
-            behavioral_questions=result.get("behavioral_questions", []),
-        )
+    # 1. Check cache first (only for logged-in users)
+    if current_user:
+        cached = db.query(InterviewPrep).filter(InterviewPrep.job_id == payload.job_id, InterviewPrep.user_id == current_user.id).first()
+        if cached:
+            result = json.loads(cached.result_json)
+            return InterviewPrepResponse(
+                job_id=payload.job_id,
+                technical_questions=result.get("technical_questions", []),
+                coding_questions=result.get("coding_questions", []),
+                system_design_questions=result.get("system_design_questions", []),
+                hr_questions=result.get("hr_questions", []),
+                behavioral_questions=result.get("behavioral_questions", []),
+            )
 
     # 2. Fetch active profile and job
-    profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
-    if not profile:
-        raise HTTPException(status_code=400, detail="Please upload your resume first.")
-
-    job = db.query(Job).filter(Job.id == payload.job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found.")
-
-    try:
-        # Build a candidate_profile dict from the stored JSON fields
+    if current_user:
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == current_user.id).order_by(CandidateProfile.created_at.desc()).first()
+        if not profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume first.")
+        
         def _safe_json(val, fallback):
             if not val:
                 return fallback
@@ -1328,7 +1482,23 @@ def generate_interview_prep(payload: InterviewPrepRequest, db: Session = Depends
             "education":      _safe_json(profile.education, []),
             "certifications": _safe_json(profile.certifications, []),
         }
+    else:
+        if not payload.guest_profile:
+            raise HTTPException(status_code=400, detail="Please upload your resume first.")
+        profile = payload.guest_profile
+        candidate_profile = {
+            "skills":         profile.skills or [],
+            "experience":     profile.experience or [],
+            "projects":       profile.projects or [],
+            "education":      profile.education or [],
+            "certifications": profile.certifications or [],
+        }
 
+    job = db.query(Job).filter(Job.id == payload.job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    try:
         # Compose a rich job description string that includes the job title
         job_description_text = f"{job.title or ''}\n\n{job.description or ''}".strip()
 
@@ -1347,18 +1517,19 @@ def generate_interview_prep(payload: InterviewPrepRequest, db: Session = Depends
                    "If the problem persists, check that your resume is uploaded and the job has a description."
         )
 
-    # 3. Cache result
-    try:
-        db_prep = InterviewPrep(
-            id=str(uuid.uuid4()),
-            job_id=payload.job_id,
-            result_json=json.dumps(result),
-            user_id=current_user.id
-        )
-        db.add(db_prep)
-        db.commit()
-    except Exception:
-        db.rollback()  # cache write failure is non-fatal
+    # 3. Cache result (only for logged-in users)
+    if current_user:
+        try:
+            db_prep = InterviewPrep(
+                id=str(uuid.uuid4()),
+                job_id=payload.job_id,
+                result_json=json.dumps(result),
+                user_id=current_user.id
+            )
+            db.add(db_prep)
+            db.commit()
+        except Exception:
+            db.rollback()  # cache write failure is non-fatal
 
     return InterviewPrepResponse(
         job_id=payload.job_id,

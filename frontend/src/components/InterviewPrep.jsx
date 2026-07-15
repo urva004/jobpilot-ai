@@ -269,7 +269,7 @@ const TABS = [
 ];
 
 /* ─── Main Component ─────────────────────────────────────────────────── */
-const InterviewPrep = () => {
+const InterviewPrep = ({ profile }) => {
   const [jobDescriptionInput, setJobDescriptionInput] = useState('');
   const [jobTitle, setJobTitle] = useState('');
   const [savedJobId, setSavedJobId] = useState(null);
@@ -315,10 +315,28 @@ const InterviewPrep = () => {
     setLoading(true);
     setError(null);
     try {
+      const hasToken = !!localStorage.getItem('token');
+      const reqBody = { job_id: jobId };
+      if (!hasToken) {
+        if (!profile) {
+          throw new Error('Please upload your resume profile first on the Resume Profile tab.');
+        }
+        reqBody.guest_profile = {
+          raw_resume_text: profile.raw_resume_text || '',
+          skills: profile.skills || [],
+          projects: profile.projects || [],
+          education: profile.education || [],
+          experience: profile.experience || [],
+          certifications: profile.certifications || [],
+          links: profile.links || {},
+          resume_filename: profile.resume_filename || 'Guest Resume'
+        };
+      }
+
       const res = await fetch('http://localhost:8000/interview/prep', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id: jobId }),
+        body: JSON.stringify(reqBody),
       });
       if (!res.ok) {
         const err = await res.json();

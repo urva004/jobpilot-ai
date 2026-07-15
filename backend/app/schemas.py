@@ -81,8 +81,36 @@ class JobResponse(BaseModel):
         }
 
 
+
+# ─── Guest Profile Schema ─────────────────────────────────────────────────────
+class GuestProfileSchema(BaseModel):
+    """Carries in-browser parsed resume data for guest (unauthenticated) users.
+    Sent alongside feature requests so the backend can process without a DB lookup."""
+    raw_resume_text: Optional[str] = None
+    skills: List[str] = []
+    projects: List[Any] = []
+    education: List[Any] = []
+    experience: List[Any] = []
+    certifications: List[str] = []
+    links: Dict[str, Any] = {}
+    resume_filename: Optional[str] = None
+
+# ─── Profile Import (carry-over on signup) ───────────────────────────────────
+class CandidateProfileImport(BaseModel):
+    """Sent after guest signs up to persist their session-parsed resume to the DB."""
+    raw_resume_text: Optional[str] = None
+    skills: List[str] = []
+    projects: List[Any] = []
+    education: List[Any] = []
+    experience: List[Any] = []
+    certifications: List[str] = []
+    links: Dict[str, Any] = {}
+    resume_filename: Optional[str] = None
+    confidence: Optional[Dict[str, float]] = None
+
 class JobMatchRequest(BaseModel):
     job_id: str
+    guest_profile: Optional[GuestProfileSchema] = None
 
 class JobMatchResponse(BaseModel):
     job_id: str
@@ -95,6 +123,7 @@ class JobMatchResponse(BaseModel):
 # ─── Phase 4: ATS + Tailoring ───────────────────────────────────────────────
 class ATSScoreRequest(BaseModel):
     job_id: str
+    guest_profile: Optional[GuestProfileSchema] = None
 
 class ATSScoreResponse(BaseModel):
     job_id: str
@@ -104,6 +133,7 @@ class ATSScoreResponse(BaseModel):
 
 class TailorResumeRequest(BaseModel):
     job_id: str
+    guest_profile: Optional[GuestProfileSchema] = None
 
 class TailorResumeResponse(BaseModel):
     job_id: str
@@ -115,6 +145,7 @@ class TailorResumeResponse(BaseModel):
 # ─── Phase 5: Writing Agent ───────────────────────────────────────────────────
 class CoverLetterRequest(BaseModel):
     job_id: str
+    guest_profile: Optional[GuestProfileSchema] = None
 
 class CoverLetterResponse(BaseModel):
     job_id: str
@@ -130,6 +161,7 @@ class EmailType(str):
 class GenerateEmailRequest(BaseModel):
     job_id: str
     email_type: str  # cold | referral | followup | thankyou
+    guest_profile: Optional[GuestProfileSchema] = None
 
 class GenerateEmailResponse(BaseModel):
     job_id: str
@@ -246,6 +278,7 @@ class BehavioralQuestion(BaseModel):
 
 class InterviewPrepRequest(BaseModel):
     job_id: str
+    guest_profile: Optional[GuestProfileSchema] = None
 
 class InterviewPrepResponse(BaseModel):
     job_id: str

@@ -81,4 +81,18 @@ def rate_limit_upload(user_id: str, endpoint: str):
 
 def rate_limit_auth(ip_address: str):
     """5 auth attempts per IP per 15 minutes (900 seconds) to prevent brute force/spam."""
-    _check_rate_limit(user_id=ip_address, endpoint="auth_ip", max_requests=5, window_seconds=900)
+    key = (ip_address, "auth_ip")
+    now = time.monotonic()
+    window_seconds = 900
+    max_requests = 5
+    cutoff = now - window_seconds
+
+    _rate_store[key] = [t for t in _rate_store[key] if t > cutoff]
+
+    if len(_rate_store[key]) >= max_requests:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many attempts. Please try again in 15 minutes."
+        )
+
+    _rate_store[key].append(now)

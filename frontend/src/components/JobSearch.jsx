@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import EmailApply from './EmailApply';
 
-const JobSearch = () => {
+const JobSearch = ({ profile, onOpenAuth }) => {
   const [keywords, setKeywords] = useState('');
   const [location, setLocation] = useState('');
   const [remote, setRemote] = useState(false);
@@ -76,12 +76,30 @@ const JobSearch = () => {
     }));
 
     try {
+      const hasToken = !!localStorage.getItem('token');
+      const reqBody = { job_id: jobId };
+      if (!hasToken) {
+        if (!profile) {
+          throw new Error('Please upload your resume profile first on the Resume Profile tab.');
+        }
+        reqBody.guest_profile = {
+          raw_resume_text: profile.raw_resume_text || '',
+          skills: profile.skills || [],
+          projects: profile.projects || [],
+          education: profile.education || [],
+          experience: profile.experience || [],
+          certifications: profile.certifications || [],
+          links: profile.links || {},
+          resume_filename: profile.resume_filename || 'Guest Resume'
+        };
+      }
+
       const response = await fetch('http://localhost:8000/jobs/match', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ job_id: jobId }),
+        body: JSON.stringify(reqBody),
       });
 
       if (!response.ok) {
@@ -527,7 +545,14 @@ const JobSearch = () => {
 
                             {job.has_contact_email && (
                               <button
-                                onClick={() => setActiveEmailJob(job)}
+                                onClick={() => {
+                                  const hasToken = !!localStorage.getItem('token');
+                                  if (!hasToken) {
+                                    if (onOpenAuth) onOpenAuth('signup');
+                                  } else {
+                                    setActiveEmailJob(job);
+                                  }
+                                }}
                                 className="w-full text-center btn-secondary hover:text-emerald-300 font-semibold py-2 rounded-lg text-xs transition"
                               >
                                 ✉️ Apply via Email

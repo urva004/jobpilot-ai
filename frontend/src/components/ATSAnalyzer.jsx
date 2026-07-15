@@ -68,7 +68,7 @@ const CopyButton = ({ text }) => {
 
 /* ─── Main Component ─────────────────────────────────────────────────────── */
 
-const ATSAnalyzer = () => {
+const ATSAnalyzer = ({ profile }) => {
   const [selectedJobId, setSelectedJobId] = useState('');
   const [jobDescriptionInput, setJobDescriptionInput] = useState('');
   const [jobTitle, setJobTitle] = useState('');
@@ -125,10 +125,28 @@ const ATSAnalyzer = () => {
     const jobId = await resolveJobId();
     if (!jobId) { setAtsLoading(false); return; }
     try {
+      const hasToken = !!localStorage.getItem('token');
+      const reqBody = { job_id: jobId };
+      if (!hasToken) {
+        if (!profile) {
+          throw new Error('Please upload your resume profile first on the Resume Profile tab.');
+        }
+        reqBody.guest_profile = {
+          raw_resume_text: profile.raw_resume_text || '',
+          skills: profile.skills || [],
+          projects: profile.projects || [],
+          education: profile.education || [],
+          experience: profile.experience || [],
+          certifications: profile.certifications || [],
+          links: profile.links || {},
+          resume_filename: profile.resume_filename || 'Guest Resume'
+        };
+      }
+
       const res = await fetch('http://localhost:8000/ats/score', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id: jobId }),
+        body: JSON.stringify(reqBody),
       });
       if (!res.ok) throw new Error((await res.json()).detail || 'ATS scoring failed.');
       setAtsData(await res.json());
@@ -146,10 +164,28 @@ const ATSAnalyzer = () => {
     const jobId = await resolveJobId();
     if (!jobId) { setTailorLoading(false); return; }
     try {
+      const hasToken = !!localStorage.getItem('token');
+      const reqBody = { job_id: jobId };
+      if (!hasToken) {
+        if (!profile) {
+          throw new Error('Please upload your resume profile first on the Resume Profile tab.');
+        }
+        reqBody.guest_profile = {
+          raw_resume_text: profile.raw_resume_text || '',
+          skills: profile.skills || [],
+          projects: profile.projects || [],
+          education: profile.education || [],
+          experience: profile.experience || [],
+          certifications: profile.certifications || [],
+          links: profile.links || {},
+          resume_filename: profile.resume_filename || 'Guest Resume'
+        };
+      }
+
       const res = await fetch('http://localhost:8000/resume/tailor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id: jobId }),
+        body: JSON.stringify(reqBody),
       });
       if (!res.ok) throw new Error((await res.json()).detail || 'Resume tailoring failed.');
       setTailorData(await res.json());

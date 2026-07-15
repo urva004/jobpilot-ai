@@ -129,7 +129,7 @@ const OutputCard = ({ title, subject, body, subjectLabel = 'Subject', isLoading,
 
 /* ─── Main Component ─────────────────────────────────────────────────────── */
 
-const WritingAgent = () => {
+const WritingAgent = ({ profile }) => {
   const [jobTitle, setJobTitle] = useState('');
   const [company, setCompany] = useState('');
   const [jobDescription, setJobDescription] = useState('');
@@ -187,10 +187,28 @@ const WritingAgent = () => {
     const jobId = await getJobId();
     if (!jobId) { setCoverLoading(false); return; }
     try {
+      const hasToken = !!localStorage.getItem('token');
+      const reqBody = { job_id: jobId };
+      if (!hasToken) {
+        if (!profile) {
+          throw new Error('Please upload your resume profile first on the Resume Profile tab.');
+        }
+        reqBody.guest_profile = {
+          raw_resume_text: profile.raw_resume_text || '',
+          skills: profile.skills || [],
+          projects: profile.projects || [],
+          education: profile.education || [],
+          experience: profile.experience || [],
+          certifications: profile.certifications || [],
+          links: profile.links || {},
+          resume_filename: profile.resume_filename || 'Guest Resume'
+        };
+      }
+
       const res = await fetch('http://localhost:8000/generate/cover-letter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id: jobId }),
+        body: JSON.stringify(reqBody),
       });
       if (!res.ok) throw new Error((await res.json()).detail || 'Cover letter generation failed.');
       setCoverData(await res.json());
@@ -210,10 +228,28 @@ const WritingAgent = () => {
       return;
     }
     try {
+      const hasToken = !!localStorage.getItem('token');
+      const reqBody = { job_id: jobId, email_type: emailType };
+      if (!hasToken) {
+        if (!profile) {
+          throw new Error('Please upload your resume profile first on the Resume Profile tab.');
+        }
+        reqBody.guest_profile = {
+          raw_resume_text: profile.raw_resume_text || '',
+          skills: profile.skills || [],
+          projects: profile.projects || [],
+          education: profile.education || [],
+          experience: profile.experience || [],
+          certifications: profile.certifications || [],
+          links: profile.links || {},
+          resume_filename: profile.resume_filename || 'Guest Resume'
+        };
+      }
+
       const res = await fetch('http://localhost:8000/generate/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ job_id: jobId, email_type: emailType }),
+        body: JSON.stringify(reqBody),
       });
       if (!res.ok) throw new Error((await res.json()).detail || 'Email generation failed.');
       const data = await res.json();

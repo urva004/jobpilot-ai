@@ -9,7 +9,10 @@ const Sidebar = ({
   userEmail,
   onLogout,
   theme,
-  onToggleTheme
+  onToggleTheme,
+  onLogin,
+  onSignUp,
+  onNavigateToHome
 }) => {
   const [isCollapsed, setIsCollapsed] = React.useState(false);
   const logoSrc = logo;
@@ -44,14 +47,20 @@ const Sidebar = ({
         <div>
           {/* Brand Logo & Collapse Toggle at the Top */}
           <div className="flex items-center justify-between mb-6 h-10 relative">
-            <div className={`flex items-center space-x-2.5 transition-all duration-300 ${isCollapsed ? 'justify-center w-full' : ''}`}>
+            <div 
+              className={`flex items-center space-x-2.5 transition-all duration-300 cursor-pointer ${isCollapsed ? 'justify-center w-full' : ''}`}
+              onClick={() => {
+                if (isCollapsed) {
+                  setIsCollapsed(false);
+                } else {
+                  if (onNavigateToHome) onNavigateToHome();
+                }
+              }}
+            >
               <img
                 src={logoSrc}
                 alt="JobPilot AI Logo"
-                onClick={() => isCollapsed && setIsCollapsed(false)}
-                className={`w-9 h-9 rounded-xl object-cover object-top shadow-md shadow-indigo-500/10 border shrink-0 transition-all duration-300 ${
-                  isCollapsed ? 'cursor-pointer hover:scale-105 border-indigo-500/30' : ''
-                }`}
+                className={`w-9 h-9 rounded-xl object-cover object-top shadow-md shadow-indigo-500/10 border shrink-0 transition-all duration-300 hover:scale-105 border-indigo-500/30`}
                 style={{ borderColor: 'var(--border)' }}
               />
               <div className={`transition-all duration-300 overflow-hidden ${isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[150px]'}`}>
@@ -151,7 +160,13 @@ const Sidebar = ({
               background: 'var(--bg-glass)',
               borderColor: 'var(--border)',
             }}
-            onClick={() => setCurrentPage('account')}
+            onClick={() => {
+              if (userEmail) {
+                setCurrentPage('account');
+              } else {
+                if (onLogin) onLogin();
+              }
+            }}
             title="Account Settings"
             id="nav-account-card"
           >

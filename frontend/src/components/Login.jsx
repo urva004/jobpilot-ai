@@ -28,7 +28,7 @@ const EyeIcon = ({ show }) => show ? (
   </svg>
 );
 
-const Login = ({ onLoginSuccess, initialMode = 'login', onBackToHome }) => {
+const Login = ({ onLoginSuccess, initialMode = 'login', onBackToHome, isModal = false }) => {
   const [mode, setMode] = useState(initialMode); // 'login' | 'signup' | 'verify' | 'forgot' | 'reset'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -206,38 +206,40 @@ const Login = ({ onLoginSuccess, initialMode = 'login', onBackToHome }) => {
   return (
     <div
       style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}
-      className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden text-white"
+      className={isModal ? "relative text-white font-sans max-w-md w-full" : "min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden text-white"}
     >
-      {/* Animated background blobs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute -top-40 -left-40 w-96 h-96 rounded-full opacity-20"
-          style={{
-            background: 'radial-gradient(circle, #6366f1 0%, transparent 70%)',
-            animation: 'float 8s ease-in-out infinite',
-          }}
-        />
-        <div
-          className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full opacity-15"
-          style={{
-            background: 'radial-gradient(circle, #a855f7 0%, transparent 70%)',
-            animation: 'float 10s ease-in-out infinite reverse',
-          }}
-        />
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-5"
-          style={{
-            background: 'radial-gradient(circle, #6366f1 0%, #a855f7 50%, transparent 70%)',
-          }}
-        />
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: 'linear-gradient(#6366f1 1px, transparent 1px), linear-gradient(90deg, #6366f1 1px, transparent 1px)',
-            backgroundSize: '60px 60px',
-          }}
-        />
-      </div>
+      {/* Animated background blobs (only if NOT modal) */}
+      {!isModal && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div
+            className="absolute -top-40 -left-40 w-96 h-96 rounded-full opacity-20"
+            style={{
+              background: 'radial-gradient(circle, #6366f1 0%, transparent 70%)',
+              animation: 'float 8s ease-in-out infinite',
+            }}
+          />
+          <div
+            className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full opacity-15"
+            style={{
+              background: 'radial-gradient(circle, #a855f7 0%, transparent 70%)',
+              animation: 'float 10s ease-in-out infinite reverse',
+            }}
+          />
+          <div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-5"
+            style={{
+              background: 'radial-gradient(circle, #6366f1 0%, #a855f7 50%, transparent 70%)',
+            }}
+          />
+          <div
+            className="absolute inset-0 opacity-[0.03]"
+            style={{
+              backgroundImage: 'linear-gradient(#6366f1 1px, transparent 1px), linear-gradient(90deg, #6366f1 1px, transparent 1px)',
+              backgroundSize: '60px 60px',
+            }}
+          />
+        </div>
+      )}
 
       <style>{`
         @keyframes float {
@@ -306,14 +308,15 @@ const Login = ({ onLoginSuccess, initialMode = 'login', onBackToHome }) => {
             border: '1px solid rgba(99,102,241,0.2)',
           }}
         >
-          {/* Back button */}
+          {/* Close button in top-right */}
           {onBackToHome && (
             <button
               type="button"
               onClick={onBackToHome}
-              className="absolute left-6 top-6 text-xs font-semibold text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1.5"
+              className="absolute right-6 top-6 text-slate-400 hover:text-white transition-colors text-lg font-bold cursor-pointer"
+              title="Close"
             >
-              ← Back to Home
+              ✕
             </button>
           )}
 
