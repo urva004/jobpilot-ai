@@ -1,6 +1,7 @@
 import uuid
 import json
-from fastapi import FastAPI, Depends, UploadFile, File, HTTPException
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -119,6 +120,25 @@ Base.metadata.create_all(bind=engine)
 
 
 app = FastAPI(title="JobPilot AI API", version="1.0.0")
+
+# ── Global exception handler: prevents raw Python tracebacks from reaching the UI ──
+import logging as _logging
+_api_logger = _logging.getLogger("jobpilot.api")
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Catch-all handler: logs the full traceback server-side but returns a
+    clean, generic error message to the client so internal details never leak."""
+    import traceback
+    _api_logger.error(
+        "Unhandled exception on %s %s:\n%s",
+        request.method, request.url.path,
+        traceback.format_exc()
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An unexpected error occurred. Please try again or contact support."},
+    )
 
 @app.on_event("startup")
 async def startup_event():
@@ -1120,14 +1140,40 @@ def generate_interview_prep(payload: InterviewPrepRequest, db: Session = Depends
         raise HTTPException(status_code=404, detail="Job not found.")
 
     try:
-        # Generate using Mistral Service
-        result = MistralService.generate_interview_questions(
-            resume_text=profile.raw_resume_text or "",
-            job_title=job.title or "",
-            job_description=job.description or ""
+        # Build a candidate_profile dict from the stored JSON fields
+        def _safe_json(val, fallback):
+            if not val:
+                return fallback
+            try:
+                return json.loads(val)
+            except Exception:
+                return fallback
+
+        candidate_profile = {
+            "skills":         _safe_json(profile.skills, []),
+            "experience":     _safe_json(profile.experience, []),
+            "projects":       _safe_json(profile.projects, []),
+            "education":      _safe_json(profile.education, []),
+            "certifications": _safe_json(profile.certifications, []),
+        }
+
+        # Compose a rich job description string that includes the job title
+        job_description_text = f"{job.title or ''}\n\n{job.description or ''}".strip()
+
+        # Call the correct method with the correct parameters
+        result = MistralService.generate_interview_prep(
+            job_description=job_description_text,
+            candidate_profile=candidate_profile,
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate questions: {str(e)}")
+        _api_logger.error("Interview prep generation failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Couldn't generate interview questions — please try again. "
+                   "If the problem persists, check that your resume is uploaded and the job has a description."
+        )
 
     # 3. Cache result
     try:
