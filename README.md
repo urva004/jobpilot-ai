@@ -1,5 +1,7 @@
 # JobPilot AI Webapp
 
+🚀 **Live Application URL**: [https://jobpilot-ai-1-ioik.onrender.com/](https://jobpilot-ai-1-ioik.onrender.com/)
+
 JobPilot AI is a full-stack job search and resume optimization web app. It combines a Python FastAPI backend with a React + Vite frontend to offer resume parsing, AI-powered job matching, ATS analysis, application tracking, and notification scheduling.
 
 ## Key Features
@@ -11,7 +13,7 @@ JobPilot AI is a full-stack job search and resume optimization web app. It combi
 - ATS analysis, tailored resume suggestions, and writing assistant support
 - Application tracker with status updates and notes
 - Notification scheduler for periodic job matching
-- SQLite persistence with SQLAlchemy
+- Neon Serverless PostgreSQL persistence with SQLAlchemy
 
 ## Tech Stack
 
@@ -19,7 +21,7 @@ JobPilot AI is a full-stack job search and resume optimization web app. It combi
 - Frontend: React, Vite, Tailwind CSS
 - AI integrations: Mistral API
 - Vector matching: local JSON vector store
-- Database: SQLite
+- Database: Neon PostgreSQL (Production) / SQLite (Local)
 
 ## Repository Structure
 
@@ -127,7 +129,7 @@ npm run dev
 
 - Vector embeddings are stored in `backend/app/vector_store.json`.
 - Scheduler background matching runs automatically at startup and checks for new matches.
-- The project currently uses a local SQLite database and is best suited for development and prototyping.
+- The project uses Neon Serverless PostgreSQL for permanent data persistence in production, and can fall back to local SQLite for local testing.
 
 ## Future Improvements
 
