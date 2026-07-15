@@ -77,3 +77,8 @@ def rate_limit_upload(user_id: str, endpoint: str):
     """5 resume uploads per minute per user."""
     log_request(user_id, endpoint, "type=upload")
     _check_rate_limit(user_id, endpoint, max_requests=5, window_seconds=60)
+
+
+def rate_limit_auth(ip_address: str):
+    """5 auth attempts per IP per 15 minutes (900 seconds) to prevent brute force/spam."""
+    _check_rate_limit(user_id=ip_address, endpoint="auth_ip", max_requests=5, window_seconds=900)

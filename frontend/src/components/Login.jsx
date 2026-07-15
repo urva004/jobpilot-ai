@@ -28,11 +28,14 @@ const EyeIcon = ({ show }) => show ? (
   </svg>
 );
 
-const Login = ({ onLoginSuccess }) => {
-  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+const Login = ({ onLoginSuccess, initialMode = 'login', onBackToHome }) => {
+  const [mode, setMode] = useState(initialMode); // 'login' | 'signup' | 'verify' | 'forgot' | 'reset'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState(null);
@@ -41,9 +44,20 @@ const Login = ({ onLoginSuccess }) => {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Trigger mount animation
+    setMode(initialMode);
+    setError(null);
+    setSuccessMsg(null);
+  }, [initialMode]);
+
+  useEffect(() => {
     requestAnimationFrame(() => setMounted(true));
   }, []);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   const strength = mode === 'signup' ? getPasswordStrength(password) : null;
 
@@ -53,16 +67,47 @@ const Login = ({ onLoginSuccess }) => {
     setSuccessMsg(null);
     setPassword('');
     setConfirmPassword('');
+    setOtp('');
     setShowPassword(false);
     setShowConfirm(false);
   };
 
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return;
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch('http://localhost:8000/auth/resend-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || 'Failed to resend code.');
+      }
+      setSuccessMsg('A new verification code has been sent.');
+      setResendCooldown(60);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
-      setError('Please fill in all fields.');
+    setError(null);
+    setSuccessMsg(null);
+
+    if (!email.trim()) {
+      setError('Please enter your email.');
       return;
     }
+
+    if ((mode === 'login' || mode === 'signup' || mode === 'reset') && !password.trim()) {
+      setError('Please enter your password.');
+      return;
+    }
+
     if (mode === 'signup') {
       if (password.length < 6) {
         setError('Password must be at least 6 characters.');
@@ -74,29 +119,67 @@ const Login = ({ onLoginSuccess }) => {
       }
     }
 
-    setError(null);
-    setSuccessMsg(null);
+    if ((mode === 'verify' || mode === 'reset') && !otp.trim()) {
+      setError('Please enter the 6-digit verification code.');
+      return;
+    }
+
     setLoading(true);
 
-    const endpoint = mode === 'login' ? 'login' : 'signup';
+    let endpoint = '';
+    let bodyObj = {};
+
+    if (mode === 'signup') {
+      endpoint = 'signup';
+      bodyObj = { email: email.trim(), password: password.trim() };
+    } else if (mode === 'login') {
+      endpoint = 'login';
+      bodyObj = { email: email.trim(), password: password.trim() };
+    } else if (mode === 'verify') {
+      endpoint = 'verify-email';
+      bodyObj = { email: email.trim(), otp: otp.trim() };
+    } else if (mode === 'forgot') {
+      endpoint = 'forgot-password';
+      bodyObj = { email: email.trim() };
+    } else if (mode === 'reset') {
+      endpoint = 'reset-password';
+      bodyObj = { email: email.trim(), otp: otp.trim(), new_password: password.trim() };
+    }
+
     try {
       const res = await fetch(`http://localhost:8000/auth/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password: password.trim() }),
+        body: JSON.stringify(bodyObj),
       });
 
       if (!res.ok) {
+        // Handle unverified user error during login specifically
+        if (mode === 'login' && res.status === 403) {
+          setMode('verify');
+          setError('Your email is not verified yet. We have sent a verification code to your email.');
+          setResendCooldown(60);
+          return;
+        }
         const errData = await res.json();
-        throw new Error(errData.detail || 'Authentication failed.');
+        throw new Error(errData.detail || 'Request failed.');
       }
 
-      if (mode === 'login') {
-        const data = await res.json();
+      const data = await res.json();
+
+      if (mode === 'signup') {
+        setMode('verify');
+        setSuccessMsg('Account created! A 6-digit verification code has been sent to your email.');
+        setResendCooldown(60);
+      } else if (mode === 'login' || mode === 'verify') {
         onLoginSuccess(data.access_token, data.user_email);
-      } else {
-        setSuccessMsg('Account created! You can now sign in.');
-        switchMode('login');
+      } else if (mode === 'forgot') {
+        setMode('reset');
+        setSuccessMsg('If the account exists, a 6-digit password reset code has been sent to your email.');
+      } else if (mode === 'reset') {
+        setMode('login');
+        setSuccessMsg('Password reset successfully. You can now sign in with your new password.');
+        setPassword('');
       }
     } catch (err) {
       setError(err.message);
@@ -105,10 +188,25 @@ const Login = ({ onLoginSuccess }) => {
     }
   };
 
+  const getSubmitButtonLabel = () => {
+    if (loading) {
+      if (mode === 'login') return 'Signing in...';
+      if (mode === 'signup') return 'Creating account...';
+      if (mode === 'verify') return 'Verifying...';
+      if (mode === 'forgot') return 'Sending code...';
+      if (mode === 'reset') return 'Resetting...';
+    }
+    if (mode === 'login') return '🔐 Sign In';
+    if (mode === 'signup') return '🚀 Create Account';
+    if (mode === 'verify') return '✅ Verify Code';
+    if (mode === 'forgot') return '✉️ Send Reset Code';
+    if (mode === 'reset') return '🔄 Update Password';
+  };
+
   return (
     <div
       style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}
-      className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden"
+      className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden text-white"
     >
       {/* Animated background blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -132,7 +230,6 @@ const Login = ({ onLoginSuccess }) => {
             background: 'radial-gradient(circle, #6366f1 0%, #a855f7 50%, transparent 70%)',
           }}
         />
-        {/* Grid pattern */}
         <div
           className="absolute inset-0 opacity-[0.03]"
           style={{
@@ -170,9 +267,6 @@ const Login = ({ onLoginSuccess }) => {
           border-color: #6366f1;
           box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
         }
-        .strength-bar {
-          transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-        }
         .tab-active {
           background: linear-gradient(135deg, rgba(99,102,241,0.25), rgba(168,85,247,0.15));
           border-bottom: 2px solid #6366f1;
@@ -191,19 +285,10 @@ const Login = ({ onLoginSuccess }) => {
           transform: translateY(-1px);
           box-shadow: 0 12px 30px rgba(99,102,241,0.35);
         }
-        .btn-primary:active:not(:disabled) {
-          transform: translateY(0);
-        }
-        .btn-primary:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
       `}</style>
 
-      {/* Card */}
-      <div
-        className={`w-full max-w-md relative z-10 ${mounted ? 'card-enter' : 'opacity-0'}`}
-      >
+      {/* Card wrapper */}
+      <div className={`w-full max-w-md relative z-10 ${mounted ? 'card-enter' : 'opacity-0'}`}>
         {/* Glow border effect */}
         <div
           className="absolute -inset-0.5 rounded-3xl opacity-40"
@@ -221,8 +306,19 @@ const Login = ({ onLoginSuccess }) => {
             border: '1px solid rgba(99,102,241,0.2)',
           }}
         >
-          {/* Brand */}
-          <div className="text-center space-y-3">
+          {/* Back button */}
+          {onBackToHome && (
+            <button
+              type="button"
+              onClick={onBackToHome}
+              className="absolute left-6 top-6 text-xs font-semibold text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1.5"
+            >
+              ← Back to Home
+            </button>
+          )}
+
+          {/* Logo & Header */}
+          <div className="text-center space-y-3 pt-4">
             <div className="relative inline-flex">
               <img
                 src={logo}
@@ -242,36 +338,39 @@ const Login = ({ onLoginSuccess }) => {
             </div>
             <div>
               <h1 className="text-3xl font-black tracking-tight shimmer-text">JobPilot AI</h1>
-              <p className="text-xs text-slate-500 mt-1 font-medium">
-                Your AI-powered job search assistant
+              <p className="text-xs text-slate-500 mt-1 font-medium font-sans">
+                {mode === 'verify' && 'Email Verification'}
+                {mode === 'forgot' && 'Reset Password Request'}
+                {mode === 'reset' && 'Create New Password'}
+                {(mode === 'login' || mode === 'signup') && 'Your AI-powered job search assistant'}
               </p>
             </div>
           </div>
 
-          {/* Tab Switcher */}
-          <div
-            className="flex rounded-xl overflow-hidden"
-            style={{ background: 'rgba(15,23,42,0.8)', border: '1px solid rgba(99,102,241,0.15)' }}
-          >
-            <button
-              id="tab-login"
-              type="button"
-              onClick={() => switchMode('login')}
-              className={`flex-1 py-2.5 text-sm font-semibold transition-all duration-300 rounded-l-xl ${mode === 'login' ? 'tab-active' : 'tab-inactive hover:text-slate-300'}`}
+          {/* Tab Switcher (Signup / Login only) */}
+          {(mode === 'login' || mode === 'signup') && (
+            <div
+              className="flex rounded-xl overflow-hidden"
+              style={{ background: 'rgba(15,23,42,0.8)', border: '1px solid rgba(99,102,241,0.15)' }}
             >
-              Sign In
-            </button>
-            <button
-              id="tab-signup"
-              type="button"
-              onClick={() => switchMode('signup')}
-              className={`flex-1 py-2.5 text-sm font-semibold transition-all duration-300 rounded-r-xl ${mode === 'signup' ? 'tab-active' : 'tab-inactive hover:text-slate-300'}`}
-            >
-              Create Account
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => switchMode('login')}
+                className={`flex-1 py-2.5 text-sm font-semibold transition-all duration-300 rounded-l-xl ${mode === 'login' ? 'tab-active' : 'tab-inactive hover:text-slate-300'}`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => switchMode('signup')}
+                className={`flex-1 py-2.5 text-sm font-semibold transition-all duration-300 rounded-r-xl ${mode === 'signup' ? 'tab-active' : 'tab-inactive hover:text-slate-300'}`}
+              >
+                Create Account
+              </button>
+            </div>
+          )}
 
-          {/* Messages */}
+          {/* Status Message Banners */}
           {error && (
             <div
               className="p-3.5 rounded-xl flex items-start gap-2.5 text-sm"
@@ -302,20 +401,19 @@ const Login = ({ onLoginSuccess }) => {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email */}
+            {/* Email Address */}
             <div className="space-y-1.5">
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest pl-1">
                 Email Address
               </label>
               <input
-                id="input-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
-                autoComplete="email"
                 required
-                className="input-focus w-full py-3 px-4 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all duration-200"
+                disabled={mode === 'verify' || mode === 'reset'}
+                className="input-focus w-full py-3 px-4 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   background: 'rgba(15,23,42,0.8)',
                   border: '1px solid rgba(99,102,241,0.2)',
@@ -323,62 +421,103 @@ const Login = ({ onLoginSuccess }) => {
               />
             </div>
 
-            {/* Password */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest pl-1">
-                Password
-              </label>
-              <div className="relative">
+            {/* OTP Code Input */}
+            {(mode === 'verify' || mode === 'reset') && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center px-1">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                    Verification Code
+                  </label>
+                  {mode === 'verify' && (
+                    <button
+                      type="button"
+                      onClick={handleResendOtp}
+                      disabled={resendCooldown > 0}
+                      className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors"
+                    >
+                      {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Code'}
+                    </button>
+                  )}
+                </div>
                 <input
-                  id="input-password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  type="text"
+                  maxLength={6}
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                  placeholder="123456"
                   required
-                  className="input-focus w-full py-3 px-4 pr-12 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all duration-200"
+                  className="input-focus w-full py-3 px-4 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all duration-200 text-center tracking-[0.5em] font-bold"
                   style={{
                     background: 'rgba(15,23,42,0.8)',
                     border: '1px solid rgba(99,102,241,0.2)',
                   }}
                 />
-                <button
-                  type="button"
-                  id="btn-toggle-password"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors duration-150 p-1"
-                >
-                  <EyeIcon show={showPassword} />
-                </button>
               </div>
+            )}
 
-              {/* Password Strength Meter (signup only) */}
-              {mode === 'signup' && password && (
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4].map((level) => (
-                      <div
-                        key={level}
-                        className="h-1 flex-1 rounded-full transition-all duration-400"
-                        style={{
-                          background: strength.score >= level ? strength.color : 'rgba(99,102,241,0.12)',
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between px-0.5">
-                    <span className="text-[10px] text-slate-500">Password strength</span>
-                    <span
-                      className="text-[10px] font-semibold"
-                      style={{ color: strength.color }}
+            {/* Password / New Password Input */}
+            {(mode === 'login' || mode === 'signup' || mode === 'reset') && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center px-1">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                    {mode === 'reset' ? 'New Password' : 'Password'}
+                  </label>
+                  {mode === 'login' && (
+                    <button
+                      type="button"
+                      onClick={() => switchMode('forgot')}
+                      className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
                     >
-                      {strength.label}
-                    </span>
-                  </div>
+                      Forgot?
+                    </button>
+                  )}
                 </div>
-              )}
-            </div>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    className="input-focus w-full py-3 px-4 pr-12 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all duration-200"
+                    style={{
+                      background: 'rgba(15,23,42,0.8)',
+                      border: '1px solid rgba(99,102,241,0.2)',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-1"
+                  >
+                    <EyeIcon show={showPassword} />
+                  </button>
+                </div>
+
+                {/* Signup Password Strength Meter */}
+                {mode === 'signup' && password && (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4].map((level) => (
+                        <div
+                          key={level}
+                          className="h-1 flex-1 rounded-full transition-all duration-400"
+                          style={{
+                            background: strength.score >= level ? strength.color : 'rgba(99,102,241,0.12)',
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between px-0.5">
+                      <span className="text-[10px] text-slate-500 font-sans">Password strength</span>
+                      <span className="text-[10px] font-semibold" style={{ color: strength.color }}>
+                        {strength.label}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Confirm Password (signup only) */}
             {mode === 'signup' && (
@@ -388,12 +527,10 @@ const Login = ({ onLoginSuccess }) => {
                 </label>
                 <div className="relative">
                   <input
-                    id="input-confirm-password"
                     type={showConfirm ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    autoComplete="new-password"
                     required
                     className="input-focus w-full py-3 px-4 pr-12 rounded-xl text-sm text-white placeholder-slate-600 outline-none transition-all duration-200"
                     style={{
@@ -407,51 +544,41 @@ const Login = ({ onLoginSuccess }) => {
                   />
                   <button
                     type="button"
-                    id="btn-toggle-confirm"
                     onClick={() => setShowConfirm(!showConfirm)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors duration-150 p-1"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-1"
                   >
                     <EyeIcon show={showConfirm} />
                   </button>
-                  {confirmPassword && (
-                    <span
-                      className="absolute right-10 top-1/2 -translate-y-1/2 text-xs"
-                      style={{ color: password === confirmPassword ? '#22c55e' : '#ef4444' }}
-                    >
-                      {password === confirmPassword ? '✓' : '✗'}
-                    </span>
-                  )}
                 </div>
               </div>
             )}
 
             {/* Submit Button */}
             <button
-              id="btn-submit-auth"
               type="submit"
               disabled={loading}
-              className="btn-primary w-full py-3.5 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2.5 mt-2"
+              className="btn-primary w-full py-3.5 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2.5 mt-2 disabled:opacity-50"
             >
-              {loading ? (
-                <>
-                  <div
-                    className="w-4 h-4 rounded-full border-2 border-white/25 border-t-white animate-spin"
-                  />
-                  <span>{mode === 'login' ? 'Signing in...' : 'Creating account...'}</span>
-                </>
-              ) : (
-                <>
-                  <span>{mode === 'login' ? '🔐 Sign In' : '🚀 Create Account'}</span>
-                </>
-              )}
+              {getSubmitButtonLabel()}
             </button>
           </form>
 
-          {/* Features showcase (login mode) */}
+          {/* Mode Switcher links for non-standard screens */}
+          {(mode === 'verify' || mode === 'forgot' || mode === 'reset') && (
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => switchMode('login')}
+                className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+              >
+                Back to Sign In
+              </button>
+            </div>
+          )}
+
+          {/* Features grid display for login screen */}
           {mode === 'login' && (
-            <div
-              className="grid grid-cols-3 gap-2 pt-1"
-            >
+            <div className="grid grid-cols-3 gap-2 pt-1 font-sans">
               {[
                 { icon: '🎯', label: 'AI Matching' },
                 { icon: '📝', label: 'Auto Emails' },
@@ -472,11 +599,11 @@ const Login = ({ onLoginSuccess }) => {
             </div>
           )}
 
-          {/* Footer note */}
-          <p className="text-center text-[11px] text-slate-600 pt-1">
+          {/* Privacy Note footer */}
+          <p className="text-center text-[11px] text-slate-600 pt-1 font-sans">
             {mode === 'login'
-              ? 'Your data is encrypted and stored locally.'
-              : 'By signing up, you agree to our terms of use.'}
+              ? 'Your data is encrypted and stored securely.'
+              : 'Secure verification codes expire in 10 minutes.'}
           </p>
         </div>
       </div>

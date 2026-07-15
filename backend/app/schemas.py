@@ -313,9 +313,25 @@ class TokenResponse(BaseModel):
 class UserResponse(BaseModel):
     id: str
     email: str
+    is_verified: bool
 
     class Config:
         from_attributes = True
+
+class VerifyEmailRequest(BaseModel):
+    email: str
+    otp: str
+
+class ResendOtpRequest(BaseModel):
+    email: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp: str
+    new_password: str
 
 # ─── Feature 6: Saved/Dismissed Job Schemas ──────────────────────────────────
 class SavedJobResponse(BaseModel):

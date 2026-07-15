@@ -8,6 +8,7 @@ class User(Base):
     id = Column(String, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    is_verified = Column(Boolean, default=False)  # Email OTP verification
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -151,3 +152,16 @@ class DismissedJob(Base):
     user_id = Column(String, nullable=False, index=True)
     job_id = Column(String, nullable=False, index=True)
     dismissed_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+# ── Auth: OTP tokens for email verification and password reset ────────────────
+class OtpToken(Base):
+    __tablename__ = "otp_tokens"
+
+    id         = Column(String, primary_key=True, index=True)
+    email      = Column(String, index=True, nullable=False)
+    otp_hash   = Column(String, nullable=False)   # bcrypt hash of the 6-digit OTP
+    purpose    = Column(String, nullable=False)   # "verify_email" | "reset_password"
+    expires_at = Column(DateTime, nullable=False)
+    used       = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)

@@ -49,7 +49,8 @@ from app.services.job_service import JobService
 from app.services.chroma_service import ChromaService
 from app.services.scheduler_service import SchedulerService, start_scheduler_loop
 from app.services.gmail_service import GmailService
-from app.middleware import rate_limit_mistral, rate_limit_search, rate_limit_upload  # Feature 5
+from app.middleware import rate_limit_mistral, rate_limit_search, rate_limit_upload, rate_limit_auth  # Feature 5
+from app.email_service import send_otp_email
 
 import asyncio
 import datetime
@@ -57,8 +58,8 @@ import bcrypt as _bcrypt
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import status
-from app.models import User
-from app.schemas import UserSignup, UserLogin, TokenResponse, UserResponse
+from app.models import User, OtpToken
+from app.schemas import UserSignup, UserLogin, TokenResponse, UserResponse, VerifyEmailRequest, ResendOtpRequest, ForgotPasswordRequest, ResetPasswordRequest
 from app.config import JWT_SECRET_KEY, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
 SECRET_KEY = JWT_SECRET_KEY
@@ -163,7 +164,8 @@ async def startup_event():
             ("interview_prep", "user_id", "VARCHAR"),
             ("resume_variants", "user_id", "VARCHAR"),
             ("sent_emails", "user_id", "VARCHAR"),
-            ("scheduler_settings", "user_id", "VARCHAR")
+            ("scheduler_settings", "user_id", "VARCHAR"),
+            ("users", "is_verified", "BOOLEAN DEFAULT FALSE")
         ]
 
         for table, col, col_type in alter_queries:
@@ -181,6 +183,7 @@ async def startup_event():
                     id VARCHAR PRIMARY KEY,
                     email VARCHAR UNIQUE,
                     hashed_password VARCHAR,
+                    is_verified BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP
                 )
             """))
@@ -193,8 +196,8 @@ async def startup_event():
                 default_id = "default"
                 hashed_pw = get_password_hash("jobpilot123")
                 db.execute(text("""
-                    INSERT INTO users (id, email, hashed_password, created_at)
-                    VALUES (:id, :email, :password, :created_at)
+                    INSERT INTO users (id, email, hashed_password, is_verified, created_at)
+                    VALUES (:id, :email, :password, 1, :created_at)
                 """), {
                     "id": default_id,
                     "email": default_email,
@@ -202,7 +205,11 @@ async def startup_event():
                     "created_at": datetime.datetime.utcnow()
                 })
                 db.commit()
-                print("Seeded default user default@jobpilot.local / jobpilot123")
+                print("Seeded default user default@jobpilot.local / jobpilot123 (verified)")
+            else:
+                # Ensure the seeded default user is verified
+                db.execute(text("UPDATE users SET is_verified = 1 WHERE id = 'default'"))
+                db.commit()
         except Exception as seed_err:
             db.rollback()
             print(f"Error seeding default user: {seed_err}")
@@ -240,7 +247,8 @@ app.add_middleware(
 
 
 @app.post("/auth/signup", response_model=UserResponse)
-def auth_signup(payload: UserSignup, db: Session = Depends(get_db)):
+def auth_signup(payload: UserSignup, request: Request, db: Session = Depends(get_db)):
+    rate_limit_auth(request.client.host)
     # Check if user already exists
     existing = db.query(User).filter(User.email == payload.email.lower().strip()).first()
     if existing:
@@ -251,7 +259,8 @@ def auth_signup(payload: UserSignup, db: Session = Depends(get_db)):
     user = User(
         id=user_id,
         email=payload.email.lower().strip(),
-        hashed_password=hashed
+        hashed_password=hashed,
+        is_verified=False
     )
     db.add(user)
     
@@ -272,15 +281,37 @@ def auth_signup(payload: UserSignup, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Failed to create default settings for new user: {e}")
         
+    # Generate 6-digit OTP
+    import random
+    otp_code = f"{random.randint(100000, 999999)}"
+    otp_hash = get_password_hash(otp_code)
+    
+    # Store OTP
+    otp_token = OtpToken(
+        id=str(uuid.uuid4()),
+        email=user.email,
+        otp_hash=otp_hash,
+        purpose="verify_email",
+        expires_at=datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
+    )
+    db.add(otp_token)
     db.commit()
     db.refresh(user)
+    
+    # Send verification email
+    send_otp_email(user.email, otp_code, "verify_email")
+    
     return user
 
 @app.post("/auth/login", response_model=TokenResponse)
-def auth_login(payload: UserLogin, db: Session = Depends(get_db)):
+def auth_login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
+    rate_limit_auth(request.client.host)
     user = db.query(User).filter(User.email == payload.email.lower().strip()).first()
     if not user or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
+    
+    if not user.is_verified:
+        raise HTTPException(status_code=403, detail="Please verify your email address before logging in.")
     
     access_token = create_access_token(
         data={"sub": user.id},
@@ -291,6 +322,147 @@ def auth_login(payload: UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "user_email": user.email
     }
+
+@app.post("/auth/verify-email")
+def auth_verify_email(payload: VerifyEmailRequest, request: Request, db: Session = Depends(get_db)):
+    rate_limit_auth(request.client.host)
+    email = payload.email.lower().strip()
+    otp = payload.otp.strip()
+    
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+        
+    if user.is_verified:
+        # If already verified, generate a token directly to log them in
+        access_token = create_access_token(
+            data={"sub": user.id},
+            expires_delta=datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        return {
+            "message": "Email is already verified.",
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user_email": user.email
+        }
+        
+    now = datetime.datetime.utcnow()
+    tokens = db.query(OtpToken).filter(
+        OtpToken.email == email,
+        OtpToken.purpose == "verify_email",
+        OtpToken.expires_at > now,
+        OtpToken.used == False
+    ).all()
+    
+    verified = False
+    for t in tokens:
+        if verify_password(otp, t.otp_hash):
+            t.used = True
+            user.is_verified = True
+            db.commit()
+            verified = True
+            break
+            
+    if not verified:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code.")
+        
+    access_token = create_access_token(
+        data={"sub": user.id},
+        expires_delta=datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    return {
+        "message": "Email verified successfully.",
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_email": user.email
+    }
+
+@app.post("/auth/resend-otp")
+def auth_resend_otp(payload: ResendOtpRequest, request: Request, db: Session = Depends(get_db)):
+    rate_limit_auth(request.client.host)
+    email = payload.email.lower().strip()
+    
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        return {"message": "If the account exists, a new verification code has been sent."}
+        
+    if user.is_verified:
+        raise HTTPException(status_code=400, detail="Email is already verified.")
+        
+    import random
+    otp_code = f"{random.randint(100000, 999999)}"
+    otp_hash = get_password_hash(otp_code)
+    
+    otp_token = OtpToken(
+        id=str(uuid.uuid4()),
+        email=email,
+        otp_hash=otp_hash,
+        purpose="verify_email",
+        expires_at=datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
+    )
+    db.add(otp_token)
+    db.commit()
+    
+    send_otp_email(email, otp_code, "verify_email")
+    return {"message": "A new verification code has been sent."}
+
+@app.post("/auth/forgot-password")
+def auth_forgot_password(payload: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    rate_limit_auth(request.client.host)
+    email = payload.email.lower().strip()
+    
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        return {"message": "If the account exists, a verification code has been sent."}
+        
+    import random
+    otp_code = f"{random.randint(100000, 999999)}"
+    otp_hash = get_password_hash(otp_code)
+    
+    otp_token = OtpToken(
+        id=str(uuid.uuid4()),
+        email=email,
+        otp_hash=otp_hash,
+        purpose="reset_password",
+        expires_at=datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
+    )
+    db.add(otp_token)
+    db.commit()
+    
+    send_otp_email(email, otp_code, "reset_password")
+    return {"message": "If the account exists, a verification code has been sent."}
+
+@app.post("/auth/reset-password")
+def auth_reset_password(payload: ResetPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    rate_limit_auth(request.client.host)
+    email = payload.email.lower().strip()
+    otp = payload.otp.strip()
+    
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+        
+    now = datetime.datetime.utcnow()
+    tokens = db.query(OtpToken).filter(
+        OtpToken.email == email,
+        OtpToken.purpose == "reset_password",
+        OtpToken.expires_at > now,
+        OtpToken.used == False
+    ).all()
+    
+    verified = False
+    for t in tokens:
+        if verify_password(otp, t.otp_hash):
+            t.used = True
+            user.hashed_password = get_password_hash(payload.new_password)
+            db.commit()
+            verified = True
+            break
+            
+    if not verified:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code.")
+        
+    return {"message": "Password has been reset successfully."}
 
 
 @app.get("/auth/me", response_model=UserResponse)

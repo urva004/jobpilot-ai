@@ -10,6 +10,7 @@ import InterviewPrep from './components/InterviewPrep';
 import ResumeVariants from './components/ResumeVariants';
 import Login from './components/Login';
 import AccountSettings from './components/AccountSettings';
+import LandingPage from './components/LandingPage';
 
 
 // Intercept all fetch requests globally to inject JWT token and dynamically translate API URLs
@@ -58,6 +59,8 @@ function App() {
   const [profile, setProfile] = useState(null);
   const [loadingActiveProfile, setLoadingActiveProfile] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showAuthForm, setShowAuthForm] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
 
   const [gmailStatus, setGmailStatus] = useState({ connected: false, email: '' });
   const [dailyCount, setDailyCount] = useState({ count: 0, limit: 15 });
@@ -247,7 +250,26 @@ function App() {
   };
 
   if (!token) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
+    if (!showAuthForm) {
+      return (
+        <LandingPage 
+          onNavigate={(mode) => {
+            setAuthMode(mode);
+            setShowAuthForm(true);
+          }} 
+        />
+      );
+    }
+    return (
+      <Login 
+        onLoginSuccess={(tok, email) => {
+          handleLoginSuccess(tok, email);
+          setShowAuthForm(false);
+        }} 
+        initialMode={authMode}
+        onBackToHome={() => setShowAuthForm(false)}
+      />
+    );
   }
 
   return (
