@@ -510,3 +510,40 @@ select:focus-visible {
 .input-icon-wrapper select {
   padding-left: 42px !important;
 }
+
+/* Custom Checkbox Component */
+.checkbox-custom {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-glass);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease-in-out;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.checkbox-custom:hover {
+  border-color: var(--accent);
+  background: var(--bg-glass-hover);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+.checkbox-custom:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+  background-size: 11px 11px;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+}
+.checkbox-custom:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

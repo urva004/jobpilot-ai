@@ -304,7 +304,7 @@ const MatchAlerts = ({ onRefreshUnread }) => {
                     type="checkbox"
                     checked={settings.remote_only}
                     onChange={(e) => handleSaveSettings({ remote_only: e.target.checked })}
-                    className="rounded bg-slate-950 border-slate-800 text-teal-600 focus:ring-teal-500/20"
+                    className="checkbox-custom"
                   />
                   <span>Remote Jobs Only</span>
                 </label>
@@ -330,7 +330,7 @@ const MatchAlerts = ({ onRefreshUnread }) => {
                     type="checkbox"
                     checked={simulatedEmail}
                     onChange={(e) => setSimulatedEmail(e.target.checked)}
-                    className="rounded bg-slate-950 border-slate-800 text-teal-600 focus:ring-teal-500/20"
+                    className="checkbox-custom"
                   />
                   <span>Simulate email/push matching alerts</span>
                 </label>

@@ -190,7 +190,7 @@ const JobSearch = () => {
                 type="checkbox"
                 checked={remote}
                 onChange={(e) => setRemote(e.target.checked)}
-                className="w-5 h-5 rounded border-slate-800 text-indigo-600 focus:ring-indigo-500 bg-slate-950 cursor-pointer"
+                className="checkbox-custom"
               />
               <span className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>Remote Only</span>
             </label>
