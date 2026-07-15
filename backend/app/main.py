@@ -197,7 +197,7 @@ async def startup_event():
                 hashed_pw = get_password_hash("jobpilot123")
                 db.execute(text("""
                     INSERT INTO users (id, email, hashed_password, is_verified, created_at)
-                    VALUES (:id, :email, :password, 1, :created_at)
+                    VALUES (:id, :email, :password, TRUE, :created_at)
                 """), {
                     "id": default_id,
                     "email": default_email,
@@ -208,7 +208,7 @@ async def startup_event():
                 print("Seeded default user default@jobpilot.local / jobpilot123 (verified)")
             else:
                 # Ensure the seeded default user is verified
-                db.execute(text("UPDATE users SET is_verified = 1 WHERE id = 'default'"))
+                db.execute(text("UPDATE users SET is_verified = TRUE WHERE id = 'default'"))
                 db.commit()
         except Exception as seed_err:
             db.rollback()
