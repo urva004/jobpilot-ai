@@ -229,6 +229,8 @@ const Login = ({ onLoginSuccess }) => {
                 alt="JobPilot AI Logo"
                 className="w-16 h-16 rounded-2xl object-cover object-top shadow-2xl border"
                 style={{
+                  width: '64px',
+                  height: '64px',
                   borderColor: 'rgba(99, 102, 241, 0.25)',
                   boxShadow: '0 8px 32px rgba(99,102,241,0.4)',
                 }}
