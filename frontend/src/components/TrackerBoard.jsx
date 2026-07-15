@@ -3,11 +3,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 /* ─── Constants ─────────────────────────────────────────────────────────────── */
 
 const STATUSES = [
-  { id: 'applied',   label: 'Applied',    color: 'bg-sky-500/15 border-sky-500/30 text-sky-300',      dot: 'bg-sky-400' },
-  { id: 'interview', label: 'Interview',  color: 'bg-violet-500/15 border-violet-500/30 text-violet-300', dot: 'bg-violet-400' },
-  { id: 'offer',     label: 'Offer 🎉',   color: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300', dot: 'bg-emerald-400' },
-  { id: 'follow_up', label: 'Follow Up',  color: 'bg-amber-500/15 border-amber-500/30 text-amber-300', dot: 'bg-amber-400' },
-  { id: 'rejected',  label: 'Rejected',   color: 'bg-rose-500/15 border-rose-500/30 text-rose-300',    dot: 'bg-rose-400' },
+  { id: 'applied',   label: 'Applied',    color: 'bg-sky-500/10 border-sky-500/30 text-sky-300',      dot: 'bg-sky-400' },
+  { id: 'interview', label: 'Interview',  color: 'bg-violet-500/10 border-violet-500/30 text-violet-300', dot: 'bg-violet-400' },
+  { id: 'offer',     label: 'Offer 🎉',   color: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300', dot: 'bg-emerald-400' },
+  { id: 'follow_up', label: 'Follow Up',  color: 'bg-amber-500/10 border-amber-500/30 text-amber-300', dot: 'bg-amber-400' },
+  { id: 'rejected',  label: 'Rejected',   color: 'bg-rose-500/10 border-rose-500/30 text-rose-300',    dot: 'bg-rose-400' },
 ];
 
 const statusMeta = (id) => STATUSES.find(s => s.id === id) || STATUSES[0];
@@ -20,30 +20,19 @@ const SORT_OPTIONS = [
 ];
 
 /* ─── Stats Summary ─────────────────────────────────────────────────────────── */
-const StatCard = ({ label, value, icon, color }) => (
-  <div className={`flex items-center space-x-4 bg-slate-900/40 border rounded-2xl p-4 ${color}`}>
+const StatCard = ({ label, value, icon, delayClass }) => (
+  <div className={`flex items-center space-x-4 glass-card p-4 hover-lift shadow-md entrance-anim ${delayClass}`}>
     <div className="text-2xl">{icon}</div>
     <div>
-      <p className="text-2xl font-extrabold text-white leading-none">{value}</p>
-      <p className="text-[11px] text-slate-400 mt-0.5">{label}</p>
+      <p className="text-2xl font-extrabold leading-none" style={{ color: 'var(--text-primary)' }}>{value}</p>
+      <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>{label}</p>
     </div>
   </div>
 );
 
-/* ─── Status Badge ───────────────────────────────────────────────────────────── */
-const StatusBadge = ({ status }) => {
-  const meta = statusMeta(status);
-  return (
-    <span className={`inline-flex items-center space-x-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border ${meta.color}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-      <span>{meta.label}</span>
-    </span>
-  );
-};
-
 /* ─── Match Ring ─────────────────────────────────────────────────────────────── */
 const MatchRing = ({ value }) => {
-  if (!value && value !== 0) return <span className="text-xs text-slate-600">—</span>;
+  if (!value && value !== 0) return <span className="text-xs" style={{ color: 'var(--text-muted)' }}>—</span>;
   const color = value >= 75 ? 'text-emerald-400' : value >= 50 ? 'text-amber-400' : 'text-rose-400';
   return <span className={`text-sm font-bold font-mono ${color}`}>{Math.round(value)}%</span>;
 };
@@ -79,81 +68,85 @@ const ApplicationModal = ({ initial, onClose, onSave }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm animate-fadeIn" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl w-full max-w-md z-10">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
-          <h3 className="text-base font-bold text-white">{isEdit ? 'Edit Application' : 'Add Application'}</h3>
+      <div className="relative border rounded-2xl shadow-2xl w-full max-w-md z-10 glass-card animate-fadeIn overflow-hidden"
+           style={{
+             background: 'var(--bg-elevated)',
+             borderColor: 'var(--border)'
+           }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>{isEdit ? 'Edit Application' : 'Add Application'}</h3>
           <button onClick={onClose} className="text-slate-500 hover:text-white text-xl transition">×</button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Company *</label>
+              <label className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Company *</label>
               <input
                 value={form.company}
                 onChange={e => set('company', e.target.value)}
                 required
                 placeholder="e.g. Stripe"
-                className="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl py-2.5 px-3 text-sm text-white placeholder-slate-600 outline-none transition"
+                className="input-base"
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Position *</label>
+              <label className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Position *</label>
               <input
                 value={form.position}
                 onChange={e => set('position', e.target.value)}
                 required
                 placeholder="e.g. Senior Engineer"
-                className="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl py-2.5 px-3 text-sm text-white placeholder-slate-600 outline-none transition"
+                className="input-base"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</label>
+              <label className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Status</label>
               <select
                 value={form.status}
                 onChange={e => set('status', e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl py-2.5 px-3 text-sm text-white outline-none transition"
+                className="input-base cursor-pointer"
               >
-                {STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                {STATUSES.map(s => <option key={s.id} value={s.id} style={{ color: 'black' }}>{s.label}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Applied Date</label>
+              <label className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Applied Date</label>
               <input
                 type="date"
                 value={form.applied_date}
                 onChange={e => set('applied_date', e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl py-2.5 px-3 text-sm text-white outline-none transition [color-scheme:dark]"
+                className="input-base [color-scheme:dark]"
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Match % (optional)</label>
+            <label className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Match % (optional)</label>
             <input
               type="number"
               min="0" max="100"
               value={form.match_percent}
               onChange={e => set('match_percent', e.target.value)}
               placeholder="e.g. 82"
-              className="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl py-2.5 px-3 text-sm text-white placeholder-slate-600 outline-none transition"
+              className="input-base"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Notes</label>
+            <label className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Notes</label>
             <textarea
               value={form.notes}
               onChange={e => set('notes', e.target.value)}
               rows={3}
               placeholder="Recruiter name, interview notes, referral contact..."
-              className="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl py-2.5 px-3 text-sm text-white placeholder-slate-600 outline-none transition resize-none leading-relaxed"
+              className="input-base resize-none"
             />
           </div>
 
@@ -161,14 +154,14 @@ const ApplicationModal = ({ initial, onClose, onSave }) => {
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-400 hover:text-white hover:border-slate-600 text-sm font-semibold transition"
+              className="btn-ghost flex-1 py-2.5"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-semibold transition shadow-lg disabled:opacity-50"
+              className="btn-primary flex-1 py-2.5"
             >
               {saving ? 'Saving...' : isEdit ? 'Update' : 'Add Application'}
             </button>
@@ -265,20 +258,19 @@ const TrackerBoard = () => {
     }
   }, [applications, filterStatus, searchQuery, sortBy]);
 
-  /* ── Render ── */
   return (
-    <div className="max-w-7xl mx-auto py-8 px-4">
+    <div className="max-w-7xl mx-auto py-12 px-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+      <div className="flex items-center justify-between mb-10 flex-wrap gap-4 animate-fadeIn">
         <div>
           <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-1">
             Application Tracker
           </h2>
-          <p className="text-slate-400 text-sm">Track every application from first send to final offer.</p>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Track every application from first send to final offer.</p>
         </div>
         <button
           onClick={() => setModal({ mode: 'add' })}
-          className="flex items-center space-x-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold py-2.5 px-5 rounded-xl shadow-lg shadow-indigo-500/20 transition"
+          className="btn-primary"
         >
           <span className="text-lg">+</span>
           <span>Add Application</span>
@@ -287,23 +279,23 @@ const TrackerBoard = () => {
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Total Applied" value={stats.total} icon="📋" color="border-slate-700/60" />
-        <StatCard label="Interviews" value={stats.interview} icon="🎙️" color="border-violet-700/40" />
-        <StatCard label="Offers" value={stats.offer} icon="🎉" color="border-emerald-700/40" />
-        <StatCard label="Avg. Match" value={stats.avgMatch !== null ? `${stats.avgMatch}%` : '—'} icon="🎯" color="border-indigo-700/40" />
+        <StatCard label="Total Applied" value={stats.total} icon="📋" delayClass="delay-50" />
+        <StatCard label="Interviews" value={stats.interview} icon="🎙️" delayClass="delay-100" />
+        <StatCard label="Offers" value={stats.offer} icon="🎉" delayClass="delay-150" />
+        <StatCard label="Avg. Match" value={stats.avgMatch !== null ? `${stats.avgMatch}%` : '—'} icon="🎯" delayClass="delay-200" />
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 mb-6">
+      <div className="flex flex-wrap items-center gap-3 mb-6 animate-fadeIn delay-100">
         {/* Search */}
-        <div className="relative flex-1 min-w-[200px]">
-          <span className="absolute left-3 top-2.5 text-slate-500 text-sm">🔍</span>
+        <div className="input-icon-wrapper flex-grow md:max-w-sm">
+          <span className="input-icon text-slate-500 text-sm">🔍</span>
           <input
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Search company or position..."
-            className="w-full bg-slate-900/60 border border-slate-800 focus:border-indigo-500 rounded-xl py-2 pl-9 pr-4 text-sm text-white placeholder-slate-600 outline-none transition"
+            className="input-base py-2"
           />
         </div>
 
@@ -311,7 +303,11 @@ const TrackerBoard = () => {
         <div className="flex space-x-1.5 flex-wrap gap-1.5">
           <button
             onClick={() => setFilterStatus('all')}
-            className={`text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition ${filterStatus === 'all' ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
+            className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition ${
+              filterStatus === 'all'
+                ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-400'
+                : 'border-slate-800 text-slate-500 hover:text-slate-300'
+            }`}
           >
             All ({applications.length})
           </button>
@@ -321,7 +317,11 @@ const TrackerBoard = () => {
               <button
                 key={s.id}
                 onClick={() => setFilterStatus(s.id)}
-                className={`text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition ${filterStatus === s.id ? `${s.color}` : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
+                className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition ${
+                  filterStatus === s.id
+                    ? `${s.color}`
+                    : 'border-slate-800 text-slate-500 hover:text-slate-300'
+                }`}
               >
                 {s.label} ({count})
               </button>
@@ -333,35 +333,35 @@ const TrackerBoard = () => {
         <select
           value={sortBy}
           onChange={e => setSortBy(e.target.value)}
-          className="bg-slate-900/60 border border-slate-800 rounded-xl py-2 px-3 text-xs text-slate-300 outline-none"
+          className="input-base w-auto py-2 text-xs cursor-pointer ml-auto"
         >
-          {SORT_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+          {SORT_OPTIONS.map(o => <option key={o.id} value={o.id} style={{ color: 'black' }}>{o.label}</option>)}
         </select>
       </div>
 
       {/* Loading */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-20 space-y-4">
-          <div className="w-8 h-8 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin" />
-          <p className="text-sm text-slate-400">Loading applications...</p>
+          <div className="spinner w-8 h-8 border-t-indigo-500" />
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading applications...</p>
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div className="bg-rose-500/5 border border-rose-500/20 rounded-xl p-5 text-rose-300 text-sm">
+        <div className="bg-rose-500/5 border border-rose-500/20 rounded-xl p-5 text-rose-300 text-sm animate-fadeIn">
           ⚠️ {error}
         </div>
       )}
 
       {/* Empty */}
       {!loading && !error && filtered.length === 0 && (
-        <div className="bg-slate-900/20 border border-slate-800/50 rounded-2xl p-14 text-center">
-          <div className="text-5xl mb-4">📭</div>
-          <h3 className="text-lg font-bold text-white mb-2">
+        <div className="glass-card p-14 text-center empty-state animate-fadeIn">
+          <div className="empty-state-icon">📭</div>
+          <h3 className="empty-state-title">
             {applications.length === 0 ? 'No applications yet' : 'No matches for your filters'}
           </h3>
-          <p className="text-slate-400 text-sm mb-6">
+          <p className="empty-state-body">
             {applications.length === 0
               ? 'Click "Add Application" to start tracking your job hunt.'
               : 'Try clearing the search or status filter.'}
@@ -369,7 +369,7 @@ const TrackerBoard = () => {
           {applications.length === 0 && (
             <button
               onClick={() => setModal({ mode: 'add' })}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 px-6 rounded-xl transition"
+              className="btn-primary"
             >
               + Add First Application
             </button>
@@ -379,85 +379,87 @@ const TrackerBoard = () => {
 
       {/* Table */}
       {!loading && !error && filtered.length > 0 && (
-        <div className="bg-slate-900/40 border border-slate-800 rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-800 bg-slate-950/50">
-                <th className="text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider px-5 py-3.5">Company & Role</th>
-                <th className="text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3.5">Status</th>
-                <th className="text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3.5">Match</th>
-                <th className="text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3.5">Applied</th>
-                <th className="text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 py-3.5">Notes</th>
-                <th className="text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider px-5 py-3.5">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {filtered.map((app) => (
-                <tr key={app.id} className="hover:bg-slate-800/20 transition group">
-                  {/* Company + Role */}
-                  <td className="px-5 py-4">
-                    <p className="font-semibold text-white">{app.company}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{app.position}</p>
-                  </td>
-
-                  {/* Status — inline styled select */}
-                  <td className="px-4 py-4">
-                    <select
-                      value={app.status}
-                      onChange={e => handleStatusChange(app.id, e.target.value)}
-                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border cursor-pointer outline-none transition ${statusMeta(app.status).color}`}
-                      style={{ backgroundColor: 'transparent' }}
-                    >
-                      {STATUSES.map(s => <option key={s.id} value={s.id} style={{ backgroundColor: '#0f172a' }}>{s.label}</option>)}
-                    </select>
-                  </td>
-
-                  {/* Match % */}
-                  <td className="px-4 py-4">
-                    <MatchRing value={app.match_percent} />
-                  </td>
-
-                  {/* Applied Date */}
-                  <td className="px-4 py-4 text-xs text-slate-400 whitespace-nowrap">
-                    {app.applied_date || '—'}
-                  </td>
-
-                  {/* Notes preview */}
-                  <td className="px-4 py-4 max-w-[200px]">
-                    <p className="text-xs text-slate-400 truncate" title={app.notes}>
-                      {app.notes || <span className="text-slate-700 italic">No notes</span>}
-                    </p>
-                  </td>
-
-                  {/* Actions */}
-                  <td className="px-5 py-4">
-                    <div className="flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition">
-                      <button
-                        onClick={() => setModal({ mode: 'edit', app })}
-                        className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-indigo-600 border border-slate-700 hover:border-indigo-500 text-slate-400 hover:text-white transition"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(app.id)}
-                        disabled={deletingId === app.id}
-                        className="text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-rose-600/40 border border-slate-700 hover:border-rose-500/50 text-slate-400 hover:text-rose-300 transition disabled:opacity-40"
-                      >
-                        {deletingId === app.id ? '...' : 'Delete'}
-                      </button>
-                    </div>
-                  </td>
+        <div className="glass-card overflow-hidden shadow-lg border entrance-anim delay-150">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b" style={{ background: 'var(--bg-glass)', borderColor: 'var(--border)' }}>
+                  <th className="text-left text-[9px] font-bold uppercase tracking-wider px-5 py-3.5" style={{ color: 'var(--text-muted)' }}>Company & Role</th>
+                  <th className="text-left text-[9px] font-bold uppercase tracking-wider px-4 py-3.5" style={{ color: 'var(--text-muted)' }}>Status</th>
+                  <th className="text-left text-[9px] font-bold uppercase tracking-wider px-4 py-3.5" style={{ color: 'var(--text-muted)' }}>Match</th>
+                  <th className="text-left text-[9px] font-bold uppercase tracking-wider px-4 py-3.5" style={{ color: 'var(--text-muted)' }}>Applied</th>
+                  <th className="text-left text-[9px] font-bold uppercase tracking-wider px-4 py-3.5" style={{ color: 'var(--text-muted)' }}>Notes</th>
+                  <th className="text-right text-[9px] font-bold uppercase tracking-wider px-5 py-3.5" style={{ color: 'var(--text-muted)' }}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-800/40">
+                {filtered.map((app, idx) => (
+                  <tr key={app.id} className="hover:bg-slate-800/10 transition group">
+                    {/* Company + Role */}
+                    <td className="px-5 py-4">
+                      <p className="font-bold" style={{ color: 'var(--text-primary)' }}>{app.company}</p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{app.position}</p>
+                    </td>
+
+                    {/* Status — inline styled select */}
+                    <td className="px-4 py-4">
+                      <select
+                        value={app.status}
+                        onChange={e => handleStatusChange(app.id, e.target.value)}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full border cursor-pointer outline-none transition ${statusMeta(app.status).color}`}
+                        style={{ backgroundColor: 'transparent' }}
+                      >
+                        {STATUSES.map(s => <option key={s.id} value={s.id} style={{ color: 'black' }}>{s.label}</option>)}
+                      </select>
+                    </td>
+
+                    {/* Match % */}
+                    <td className="px-4 py-4">
+                      <MatchRing value={app.match_percent} />
+                    </td>
+
+                    {/* Applied Date */}
+                    <td className="px-4 py-4 text-xs whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                      {app.applied_date || '—'}
+                    </td>
+
+                    {/* Notes preview */}
+                    <td className="px-4 py-4 max-w-[200px]">
+                      <p className="text-xs truncate" title={app.notes} style={{ color: 'var(--text-secondary)' }}>
+                        {app.notes || <span className="italic" style={{ color: 'var(--text-muted)' }}>No notes</span>}
+                      </p>
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition duration-200">
+                        <button
+                          onClick={() => setModal({ mode: 'edit', app })}
+                          className="btn-secondary text-[10px]"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(app.id)}
+                          disabled={deletingId === app.id}
+                          className="btn-ghost text-[10px] hover:border-rose-500/50 hover:text-rose-300"
+                        >
+                          {deletingId === app.id ? '...' : 'Delete'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {/* Table footer */}
-          <div className="px-5 py-3 border-t border-slate-800 bg-slate-950/30 flex items-center justify-between">
-            <p className="text-xs text-slate-500">
+          <div className="px-5 py-3 border-t flex items-center justify-between" style={{ borderColor: 'var(--border)', background: 'var(--bg-glass)' }}>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
               {filtered.length} of {applications.length} application{applications.length !== 1 ? 's' : ''}
             </p>
-            <p className="text-[10px] text-slate-600">Click a row's Edit button to update status or add notes</p>
+            <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Click a row's Edit button to update status or add notes</p>
           </div>
         </div>
       )}

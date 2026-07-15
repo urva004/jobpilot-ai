@@ -2,16 +2,59 @@ import io
 import pdfplumber
 import docx
 
+# Minimum meaningful text length from pdfplumber before triggering OCR fallback
+_OCR_THRESHOLD = 50
+
 class ResumeParser:
     @staticmethod
     def extract_text_from_pdf(file_bytes: bytes) -> str:
+        """Extract text from PDF. Falls back to OCR if pdfplumber yields < 50 chars (scanned PDF)."""
         text = ""
-        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-            for page in pdf.pages:
-                page_text = page.extract_text()
+        try:
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+        except Exception as e:
+            print(f"[ResumeParser] pdfplumber failed: {e}")
+
+        if len(text.strip()) >= _OCR_THRESHOLD:
+            return text
+
+        # ── Feature 4: OCR Fallback ────────────────────────────────────────────
+        print(f"[ResumeParser] pdfplumber extracted {len(text.strip())} chars — triggering OCR fallback")
+        try:
+            import pytesseract
+            from pdf2image import convert_from_bytes
+
+            images = convert_from_bytes(file_bytes, dpi=200)
+            ocr_text = ""
+            for i, img in enumerate(images):
+                page_text = pytesseract.image_to_string(img)
                 if page_text:
-                    text += page_text + "\n"
-        return text
+                    ocr_text += page_text + "\n"
+                    print(f"[ResumeParser] OCR page {i+1}: {len(page_text)} chars extracted")
+
+            if len(ocr_text.strip()) >= _OCR_THRESHOLD:
+                print(f"[ResumeParser] OCR succeeded: {len(ocr_text.strip())} total chars")
+                return ocr_text
+            else:
+                print(f"[ResumeParser] OCR also yielded sparse text ({len(ocr_text.strip())} chars). Returning best available.")
+                return ocr_text or text
+
+        except ImportError as ie:
+            missing = "pytesseract" if "pytesseract" in str(ie) else "pdf2image"
+            print(f"[ResumeParser] OCR library '{missing}' not installed — cannot fall back to OCR.")
+            raise ValueError(
+                f"This PDF appears to be a scanned image with no extractable text. "
+                f"OCR fallback requires '{missing}' to be installed. "
+                f"Please convert your PDF to text-based format or install OCR dependencies."
+            )
+        except Exception as e:
+            print(f"[ResumeParser] OCR fallback failed: {e}")
+            # Return whatever pdfplumber gave us rather than crashing the upload
+            return text
 
     @staticmethod
     def extract_text_from_docx(file_bytes: bytes) -> str:

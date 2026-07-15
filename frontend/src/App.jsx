@@ -6,16 +6,68 @@ import ATSAnalyzer from './components/ATSAnalyzer';
 import WritingAgent from './components/WritingAgent';
 import TrackerBoard from './components/TrackerBoard';
 import MatchAlerts from './components/MatchAlerts';
+import InterviewPrep from './components/InterviewPrep';
+import ResumeVariants from './components/ResumeVariants';
+import Login from './components/Login';
+import AccountSettings from './components/AccountSettings';
+
+
+// Intercept all fetch requests globally to inject JWT token
+const originalFetch = window.fetch;
+window.fetch = async function (url, options = {}) {
+  const token = localStorage.getItem('token');
+  
+  if (url.toString().includes('http://localhost:8000')) {
+    options.headers = {
+      ...options.headers,
+    };
+    if (token) {
+      options.headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+
+  const response = await originalFetch(url, options);
+
+  if (response.status === 401 && url.toString().includes('http://localhost:8000') && !url.toString().includes('/auth/')) {
+    localStorage.removeItem('token');
+    localStorage.removeItem('userEmail');
+    window.location.reload();
+  }
+
+  return response;
+};
 
 
 function App() {
+  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [userEmail, setUserEmail] = useState(localStorage.getItem('userEmail') || '');
   const [currentPage, setCurrentPage] = useState('resume');
   const [profile, setProfile] = useState(null);
   const [loadingActiveProfile, setLoadingActiveProfile] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  const [gmailStatus, setGmailStatus] = useState({ connected: false, email: '' });
+  const [dailyCount, setDailyCount] = useState({ count: 0, limit: 15 });
+
+  // ── Theme management ─────────────────────────────────────────────────────
+  const getInitialTheme = () => {
+    const stored = localStorage.getItem('jp-theme');
+    if (stored === 'light' || stored === 'dark') return stored;
+    return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  };
+  const [theme, setTheme] = useState(getInitialTheme);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('jp-theme', theme);
+  }, [theme]);
+
+  const handleToggleTheme = () => setTheme(t => (t === 'dark' ? 'light' : 'dark'));
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Load unread count from notifications
   const fetchUnreadCount = async () => {
+    if (!token) return;
     try {
       const response = await fetch('http://localhost:8000/notifications');
       if (response.ok) {
@@ -27,12 +79,95 @@ function App() {
     }
   };
 
+  const fetchGmailStatus = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('http://localhost:8000/gmail/status');
+      if (res.ok) {
+        const data = await res.json();
+        setGmailStatus(data);
+        if (data.connected) {
+          const limitRes = await fetch('http://localhost:8000/gmail/daily-count');
+          if (limitRes.ok) {
+            const limitData = await limitRes.json();
+            setDailyCount(limitData);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch Gmail status.', err);
+    }
+  };
+
+  const handleConnectGmail = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/gmail/auth');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.auth_url) {
+          window.location.href = data.auth_url;
+        }
+      }
+    } catch (err) {
+      console.error('Error initiating Gmail auth', err);
+    }
+  };
+
+  const handleDisconnectGmail = async () => {
+    if (!window.confirm('Disconnect Gmail account?')) return;
+    try {
+      const res = await fetch('http://localhost:8000/gmail/disconnect', { method: 'POST' });
+      if (res.ok) {
+        setGmailStatus({ connected: false, email: '' });
+        setDailyCount({ count: 0, limit: 15 });
+        alert('Gmail disconnected.');
+      }
+    } catch (err) {
+      console.error('Error disconnecting Gmail', err);
+    }
+  };
+
+  const handleLoginSuccess = (newToken, email) => {
+    setToken(newToken);
+    setUserEmail(email);
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('userEmail', email);
+  };
+
+
+  const handleLogout = (force = false) => {
+    if (force || window.confirm('Are you sure you want to log out?')) {
+      setToken('');
+      setUserEmail('');
+      localStorage.removeItem('token');
+      localStorage.removeItem('userEmail');
+      setProfile(null);
+    }
+  };
+
   useEffect(() => {
+    if (!token) return;
     fetchUnreadCount();
-  }, []);
+    fetchGmailStatus();
+
+    // Check if redirect returned from Gmail auth success
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('gmail_auth') === 'success') {
+      // Remove query param from url
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+      alert('Gmail connected successfully!');
+      fetchGmailStatus();
+    }
+  }, [token]);
 
 
   useEffect(() => {
+    if (!token) {
+      setLoadingActiveProfile(false);
+      return;
+    }
+    setLoadingActiveProfile(true);
     // Attempt to load active resume profile on mount
     const fetchActiveProfile = async () => {
       try {
@@ -48,7 +183,9 @@ function App() {
       }
     };
     fetchActiveProfile();
-  }, []);
+  }, [token]);
+
+
 
   const renderPage = () => {
     if (loadingActiveProfile) {
@@ -67,18 +204,7 @@ function App() {
       case 'search':
         return <JobSearch />;
       
-      case 'match':
-        return (
-          <div className="max-w-4xl mx-auto py-12 px-6 text-center">
-            <div className="w-20 h-20 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-4xl mx-auto mb-6">
-              🎯
-            </div>
-            <h2 className="text-3xl font-bold text-white mb-3">Semantic Matching (Phase 3)</h2>
-            <p className="text-slate-400 max-w-lg mx-auto mb-8">
-              Navigate to "Job Discovery" tab, search for jobs, and click "Compute Match %" on any job card to run the Phase 3 Semantic Match.
-            </p>
-          </div>
-        );
+
 
       case 'ats':
         return <ATSAnalyzer />;
@@ -92,28 +218,50 @@ function App() {
       case 'alerts':
         return <MatchAlerts onRefreshUnread={setUnreadCount} />;
 
+      case 'interview':
+        return <InterviewPrep />;
+
+      case 'variants':
+        return <ResumeVariants />;
+
+      case 'account':
+        return <AccountSettings userEmail={userEmail} onLogout={handleLogout} />;
+
       default:
         return <div className="text-center py-12">Page not found</div>;
     }
 
   };
 
+  if (!token) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
-    <div className="min-h-screen bg-slate-950 flex font-sans">
+    <div className="h-screen overflow-hidden flex font-sans" style={{ background: 'var(--bg-base)' }}>
       {/* Sidebar Nav */}
       <Sidebar
         currentPage={currentPage}
         setCurrentPage={setCurrentPage}
         hasProfile={!!profile}
         unreadCount={unreadCount}
+        userEmail={userEmail}
+        onLogout={handleLogout}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
       />
 
-
-      {/* Main Content Area */}
-      <main className="flex-1 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950/20 min-h-screen overflow-y-auto">
+      {/* Main Content Area — independently scrollable */}
+      <main
+        className="flex-1 overflow-y-auto"
+        style={{
+          background: 'linear-gradient(135deg, var(--bg-base) 0%, var(--bg-elevated) 50%, var(--bg-base) 100%)'
+        }}
+      >
         {renderPage()}
       </main>
     </div>
+
   );
 }
 

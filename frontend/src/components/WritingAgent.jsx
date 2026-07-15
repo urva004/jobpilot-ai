@@ -11,7 +11,7 @@ const CopyButton = ({ text, label = 'Copy' }) => {
           setTimeout(() => setCopied(false), 2200);
         });
       }}
-      className="flex items-center space-x-1.5 text-[10px] px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-white transition"
+      className="btn-secondary text-[10px]"
     >
       <span>{copied ? '✓' : '⎘'}</span>
       <span>{copied ? 'Copied!' : label}</span>
@@ -69,8 +69,8 @@ const EMAIL_TYPES = [
 const OutputCard = ({ title, subject, body, subjectLabel = 'Subject', isLoading, error, placeholder }) => {
   if (isLoading) {
     return (
-      <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-8 flex flex-col items-center justify-center space-y-4 min-h-[220px]">
-        <div className="w-9 h-9 rounded-full border-4 border-purple-500/20 border-t-purple-400 animate-spin" />
+      <div className="glass-card p-8 flex flex-col items-center justify-center space-y-4 min-h-[220px]">
+        <div className="spinner w-9 h-9 border-t-purple-400" />
         <p className="text-xs text-purple-400 font-mono animate-pulse">Mistral is writing your content...</p>
       </div>
     );
@@ -78,8 +78,8 @@ const OutputCard = ({ title, subject, body, subjectLabel = 'Subject', isLoading,
 
   if (error) {
     return (
-      <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-5 text-rose-300 text-sm">
-        <p className="font-semibold mb-1">⚠️ Generation Failed</p>
+      <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-5 text-rose-300 text-sm animate-fadeIn">
+        <p className="font-bold mb-1">⚠️ Generation Failed</p>
         <p className="text-xs opacity-80">{error}</p>
       </div>
     );
@@ -87,27 +87,27 @@ const OutputCard = ({ title, subject, body, subjectLabel = 'Subject', isLoading,
 
   if (!body) {
     return (
-      <div className="bg-slate-900/20 border border-slate-800/50 rounded-2xl p-10 text-center min-h-[220px] flex flex-col items-center justify-center">
-        <div className="text-4xl mb-3">✍️</div>
-        <p className="text-slate-400 text-sm max-w-xs">{placeholder}</p>
+      <div className="glass-card p-10 text-center empty-state min-h-[220px] animate-fadeIn">
+        <div className="empty-state-icon">✍️</div>
+        <p className="empty-state-body max-w-xs">{placeholder}</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-slate-900/40 border border-slate-800 rounded-2xl overflow-hidden">
+    <div className="glass-card overflow-hidden shadow-lg border entrance-anim">
       {/* Card Header */}
-      <div className="flex items-center justify-between px-5 py-3 bg-slate-950/50 border-b border-slate-800">
-        <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">{title}</span>
+      <div className="flex items-center justify-between px-5 py-3 border-b" style={{ background: 'var(--bg-glass)', borderColor: 'var(--border)' }}>
+        <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>{title}</span>
         <CopyButton text={subject ? `Subject: ${subject}\n\n${body}` : body} label="Copy All" />
       </div>
 
       {/* Subject Line */}
       {subject && (
-        <div className="px-5 pt-4 pb-2 border-b border-slate-800/50">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{subjectLabel}</p>
+        <div className="px-5 pt-4 pb-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+          <p className="text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>{subjectLabel}</p>
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-indigo-300 flex-1">{subject}</p>
+            <p className="text-sm font-bold flex-1" style={{ color: 'var(--text-link)' }}>{subject}</p>
             <CopyButton text={subject} label="Copy" />
           </div>
         </div>
@@ -116,11 +116,11 @@ const OutputCard = ({ title, subject, body, subjectLabel = 'Subject', isLoading,
       {/* Body */}
       <div className="px-5 py-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Body</p>
+          <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Body</p>
           <CopyButton text={body} label="Copy Body" />
         </div>
-        <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4">
-          <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap font-sans">{body}</p>
+        <div className="border rounded-xl p-4" style={{ background: 'var(--bg-base)', borderColor: 'var(--border-subtle)' }}>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap font-sans" style={{ color: 'var(--text-secondary)' }}>{body}</p>
         </div>
       </div>
     </div>
@@ -227,54 +227,54 @@ const WritingAgent = () => {
   const emailTypeMeta = EMAIL_TYPES.find(t => t.id === selectedEmailType);
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-4">
+    <div className="max-w-6xl mx-auto py-12 px-6">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-10 text-left animate-fadeIn">
         <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-purple-400 via-pink-400 to-rose-400 bg-clip-text text-transparent mb-2">
           Writing Agent
         </h2>
-        <p className="text-slate-400">
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           Generate personalized cover letters and targeted job-search emails — all powered by Mistral AI and tailored to the specific role.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* ── Left: Input Panel ── */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-5 space-y-4">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Job Details</h3>
+        <div className="lg:col-span-2 space-y-4 animate-fadeIn">
+          <div className="glass-card p-5 space-y-4 shadow-lg">
+            <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Job Details</h3>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Job Title</label>
+                <label className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Job Title</label>
                 <input
                   type="text"
                   value={jobTitle}
                   onChange={(e) => { setJobTitle(e.target.value); setSavedJobId(null); }}
                   placeholder="e.g. Backend Engineer"
-                  className="w-full bg-slate-950/80 border border-slate-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 rounded-xl py-2 px-3 text-sm text-white placeholder-slate-600 outline-none transition"
+                  className="input-base"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Company</label>
+                <label className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Company</label>
                 <input
                   type="text"
                   value={company}
                   onChange={(e) => { setCompany(e.target.value); setSavedJobId(null); }}
                   placeholder="e.g. Stripe"
-                  className="w-full bg-slate-950/80 border border-slate-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 rounded-xl py-2 px-3 text-sm text-white placeholder-slate-600 outline-none transition"
+                  className="input-base"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Job Description *</label>
+              <label className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Job Description *</label>
               <textarea
                 value={jobDescription}
                 onChange={(e) => { setJobDescription(e.target.value); setSavedJobId(null); }}
                 rows={9}
                 placeholder="Paste the full job description here..."
-                className="w-full bg-slate-950/80 border border-slate-800 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 rounded-xl py-2.5 px-3 text-sm text-white placeholder-slate-600 outline-none transition resize-none leading-relaxed"
+                className="input-base resize-none"
               />
             </div>
 
@@ -285,22 +285,22 @@ const WritingAgent = () => {
             )}
 
             {/* Mode Tabs */}
-            <div className="flex rounded-xl border border-slate-800 overflow-hidden">
+            <div className="flex rounded-xl overflow-hidden border p-1" style={{ background: 'var(--bg-base)', borderColor: 'var(--border)' }}>
               <button
                 onClick={() => setActiveMode('cover')}
-                className={`flex-1 py-2.5 text-xs font-semibold transition flex items-center justify-center space-x-1.5 ${
+                className={`flex-grow py-2 text-xs font-bold transition rounded-lg flex items-center justify-center space-x-1.5 ${
                   activeMode === 'cover'
-                    ? 'bg-purple-500/20 text-purple-300 border-r border-slate-800'
-                    : 'text-slate-500 hover:text-slate-300 border-r border-slate-800'
+                    ? 'bg-purple-500/10 text-purple-300 border border-purple-500/20'
+                    : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
                 <span>📄</span><span>Cover Letter</span>
               </button>
               <button
                 onClick={() => setActiveMode('email')}
-                className={`flex-1 py-2.5 text-xs font-semibold transition flex items-center justify-center space-x-1.5 ${
+                className={`flex-grow py-2 text-xs font-bold transition rounded-lg flex items-center justify-center space-x-1.5 ${
                   activeMode === 'email'
-                    ? 'bg-pink-500/20 text-pink-300'
+                    ? 'bg-pink-500/10 text-pink-300 border border-pink-500/20'
                     : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
@@ -313,10 +313,10 @@ const WritingAgent = () => {
               <button
                 onClick={handleGenerateCoverLetter}
                 disabled={coverLoading || savingJob || !jobDescription.trim()}
-                className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold py-2.5 rounded-xl transition shadow-lg shadow-purple-500/10 disabled:opacity-40"
+                className="w-full btn-primary bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 shadow-lg shadow-purple-500/15"
               >
                 {(coverLoading || savingJob) ? (
-                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /><span>Writing...</span></>
+                  <><div className="spinner w-4 h-4 border-t-white" /><span>Writing...</span></>
                 ) : (
                   <span>✨ Generate Cover Letter</span>
                 )}
@@ -326,8 +326,8 @@ const WritingAgent = () => {
 
           {/* Email Type Selector (shown in email mode) */}
           {activeMode === 'email' && (
-            <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-4 space-y-3">
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Email Type</h3>
+            <div className="glass-card p-4 space-y-3 shadow-lg border entrance-anim">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Email Type</h3>
               <div className="space-y-2">
                 {EMAIL_TYPES.map((type) => (
                   <button
@@ -335,14 +335,14 @@ const WritingAgent = () => {
                     onClick={() => setSelectedEmailType(type.id)}
                     className={`w-full text-left flex items-start space-x-3 p-3 rounded-xl border transition ${
                       selectedEmailType === type.id
-                        ? 'bg-slate-800/60 border-slate-600'
+                        ? 'bg-slate-800/20 border-slate-600 shadow-sm'
                         : 'border-slate-800/60 hover:border-slate-700'
                     }`}
                   >
                     <span className="text-xl mt-0.5">{type.icon}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-slate-200">{type.label}</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">{type.description}</p>
+                      <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{type.label}</p>
+                      <p className="text-[10px] mt-0.5 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{type.description}</p>
                     </div>
                     {selectedEmailType === type.id && (
                       <span className="text-indigo-400 text-sm mt-0.5">◉</span>
@@ -353,10 +353,10 @@ const WritingAgent = () => {
               <button
                 onClick={() => handleGenerateEmail(selectedEmailType)}
                 disabled={emailResults[selectedEmailType]?.loading || savingJob || !jobDescription.trim()}
-                className={`w-full flex items-center justify-center space-x-2 bg-gradient-to-r ${emailTypeMeta?.color} hover:brightness-110 text-white font-semibold py-2.5 rounded-xl transition shadow-lg disabled:opacity-40`}
+                className={`w-full btn-primary bg-gradient-to-r ${emailTypeMeta?.color} hover:brightness-110 shadow-lg`}
               >
                 {(emailResults[selectedEmailType]?.loading || savingJob) ? (
-                  <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /><span>Writing...</span></>
+                  <><div className="spinner w-4 h-4 border-t-white" /><span>Writing...</span></>
                 ) : (
                   <span>✨ Generate {emailTypeMeta?.label}</span>
                 )}
@@ -366,7 +366,7 @@ const WritingAgent = () => {
         </div>
 
         {/* ── Right: Output Panel ── */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 space-y-4">
           {activeMode === 'cover' && (
             <OutputCard
               title="Cover Letter"
@@ -382,11 +382,11 @@ const WritingAgent = () => {
           {activeMode === 'email' && (
             <div className="space-y-4">
               {/* Type badge header */}
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-3 entrance-anim">
                 <span className="text-2xl">{emailTypeMeta?.icon}</span>
                 <div>
-                  <p className="text-sm font-bold text-white">{emailTypeMeta?.label} Email</p>
-                  <p className="text-xs text-slate-400">{emailTypeMeta?.description}</p>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{emailTypeMeta?.label} Email</p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{emailTypeMeta?.description}</p>
                 </div>
                 {currentEmail?.data && (
                   <span className={`ml-auto text-[10px] font-bold px-2.5 py-1 rounded-full border ${emailTypeMeta?.badge}`}>
@@ -407,7 +407,7 @@ const WritingAgent = () => {
 
               {/* Resume attach reminder for apply type */}
               {selectedEmailType === 'apply' && currentEmail?.data && (
-                <div className={`flex items-start space-x-3 text-xs px-4 py-3 rounded-xl border ${emailTypeMeta?.tipColor}`}>
+                <div className={`flex items-start space-x-3 text-xs px-4 py-3 rounded-xl border entrance-anim ${emailTypeMeta?.tipColor}`}>
                   <span className="mt-0.5 flex-shrink-0">📎</span>
                   <p>{emailTypeMeta?.tip}</p>
                 </div>
@@ -419,14 +419,18 @@ const WritingAgent = () => {
                 .map(([type, r]) => {
                   const meta = EMAIL_TYPES.find(t => t.id === type);
                   return (
-                    <div key={type} className="bg-slate-900/20 border border-slate-800/40 rounded-xl p-3 flex items-center justify-between">
+                    <div key={type} className="border rounded-xl p-3 flex items-center justify-between entrance-anim"
+                         style={{
+                           background: 'var(--bg-glass)',
+                           borderColor: 'var(--border)'
+                         }}>
                       <div className="flex items-center space-x-2">
                         <span className="text-base">{meta?.icon}</span>
-                        <span className="text-xs text-slate-400">{meta?.label} — already generated</span>
+                        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{meta?.label} — already generated</span>
                       </div>
                       <button
                         onClick={() => setSelectedEmailType(type)}
-                        className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold border border-indigo-500/20 px-2.5 py-1 rounded-lg transition"
+                        className="btn-secondary text-[10px]"
                       >
                         View
                       </button>

@@ -100,13 +100,13 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
   };
 
   return (
-    <div className="max-w-5xl mx-auto py-8 px-4">
+    <div className="max-w-5xl mx-auto py-12 px-6">
       {/* Page Header */}
-      <div className="mb-8">
-        <h2 className="text-3xl font-extrabold tracking-tight text-white mb-2 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+      <div className="mb-10 text-left animate-fadeIn">
+        <h2 className="text-3xl font-extrabold tracking-tight mb-2 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
           Resume Intelligence
         </h2>
-        <p className="text-slate-400">
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
           Upload your resume in PDF or DOCX format to parse and extract your skills, projects, and work history using Mistral AI.
         </p>
       </div>
@@ -119,11 +119,24 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
           onDragLeave={handleDrag}
           onDrop={handleDrop}
           onClick={onButtonClick}
-          className={`relative border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all duration-300 ${
-            dragActive
-              ? 'border-indigo-500 bg-indigo-500/10 shadow-lg shadow-indigo-500/10'
-              : 'border-slate-800 bg-slate-900/40 hover:border-slate-700 hover:bg-slate-900/60'
-          }`}
+          className="relative border-2 border-dashed rounded-2xl p-16 text-center cursor-pointer transition-all duration-300"
+          style={{
+            background: dragActive ? 'var(--accent-soft)' : 'var(--bg-glass)',
+            borderColor: dragActive ? 'var(--accent)' : 'var(--border)',
+            boxShadow: dragActive ? 'var(--shadow-glow)' : 'var(--shadow-sm)'
+          }}
+          onMouseEnter={(e) => {
+            if (!dragActive) {
+              e.currentTarget.style.borderColor = 'var(--accent-hover)';
+              e.currentTarget.style.background = 'var(--bg-glass-hover)';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!dragActive) {
+              e.currentTarget.style.borderColor = 'var(--border)';
+              e.currentTarget.style.background = 'var(--bg-glass)';
+            }
+          }}
         >
           <input
             ref={fileInputRef}
@@ -133,15 +146,26 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
             onChange={handleChange}
           />
           <div className="flex flex-col items-center justify-center space-y-4">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-3xl animate-bounce">
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl float-anim border shadow-sm transition-colors"
+              style={{
+                background: 'var(--accent-soft)',
+                borderColor: 'var(--border)',
+              }}
+            >
               📄
             </div>
             <div>
-              <p className="text-lg font-semibold text-white">Drag & drop your resume here</p>
-              <p className="text-sm text-slate-400 mt-1">or click to browse from your device</p>
+              <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Drag & drop your resume here</p>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>or click to browse from your device</p>
             </div>
             <div className="pt-2">
-              <span className="text-xs text-slate-500 px-3 py-1 bg-slate-950/60 rounded-full border border-slate-800">
+              <span className="text-xs px-3 py-1 rounded-full border"
+                    style={{
+                      background: 'var(--bg-glass)',
+                      borderColor: 'var(--border)',
+                      color: 'var(--text-secondary)'
+                    }}>
                 PDF, DOCX up to 10MB
               </span>
             </div>
@@ -151,18 +175,18 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
 
       {/* Loading Animation State */}
       {loading && (
-        <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-12 flex flex-col items-center justify-center space-y-6 shadow-xl backdrop-blur-md">
+        <div className="glass-card p-12 flex flex-col items-center justify-center space-y-6 shadow-xl text-center">
           {/* Circular Spinner */}
           <div className="relative w-20 h-20">
-            <div className="absolute inset-0 rounded-full border-4 border-indigo-500/10"></div>
+            <div className="absolute inset-0 rounded-full border-4" style={{ borderColor: 'var(--border-subtle)' }}></div>
             <div className="absolute inset-0 rounded-full border-4 border-t-indigo-500 border-r-purple-500 animate-spin"></div>
           </div>
-          <div className="text-center space-y-2">
-            <h3 className="text-xl font-bold text-white">Analyzing Resume</h3>
-            <p className="text-sm text-indigo-400 font-mono animate-pulse">{loadingStep}</p>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Analyzing Resume</h3>
+            <p className="text-sm font-mono animate-pulse" style={{ color: 'var(--text-link)' }}>{loadingStep}</p>
           </div>
           {/* Progress loader bar */}
-          <div className="w-64 h-1.5 bg-slate-950 rounded-full overflow-hidden">
+          <div className="w-64 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-base)' }}>
             <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 animate-[loading_10s_ease-in-out_infinite] w-2/3 rounded-full"></div>
           </div>
         </div>
@@ -170,10 +194,10 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
 
       {/* Error Message */}
       {error && (
-        <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start space-x-3 text-rose-300 text-sm">
+        <div className="mb-8 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start space-x-3 text-rose-300 text-sm animate-fadeIn">
           <span className="text-lg">⚠️</span>
           <div>
-            <p className="font-semibold">Upload Failed</p>
+            <p className="font-bold">Upload Failed</p>
             <p className="opacity-90">{error}</p>
           </div>
         </div>
@@ -181,10 +205,10 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
 
       {/* Parsed Profile Display */}
       {profile && !loading && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6">
           {/* Action Row */}
-          <div className="flex justify-between items-center bg-slate-900/40 p-4 border border-slate-800 rounded-xl">
-            <div className="text-sm text-slate-400">
+          <div className="flex justify-between items-center p-4 border rounded-xl glass-card entrance-anim">
+            <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
               Successfully parsed resume on {new Date(profile.created_at).toLocaleDateString()}
             </div>
             <button
@@ -192,7 +216,7 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
                 onUploadSuccess(null);
                 setError(null);
               }}
-              className="text-xs font-semibold px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition"
+              className="btn-secondary"
             >
               Upload Different Resume
             </button>
@@ -202,30 +226,46 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
             {/* Main Info (Col-span 2) */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="lg:col-span-2 flex flex-col space-y-6">
               
               {/* Experience Card */}
-              <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 shadow-md">
-                <h3 className="text-xl font-bold text-white mb-6 flex items-center">
+              <div className="glass-card p-6 shadow-md entrance-anim delay-100">
+                <h3 className="text-xl font-bold mb-6 flex items-center" style={{ color: 'var(--text-primary)' }}>
                   <span className="mr-3">💼</span> Work Experience
                 </h3>
                 {profile.experience && profile.experience.length > 0 ? (
-                  <div className="space-y-6 relative border-l border-slate-800 pl-6 ml-3">
+                  <div className="space-y-6 relative ml-3">
                     {profile.experience.map((exp, idx) => (
-                      <div key={idx} className="relative group">
+                      <div key={idx} className="relative pl-6 pb-6 last:pb-0 group">
+                        {/* Connecting vertical line */}
+                        {idx < profile.experience.length - 1 && (
+                          <div
+                            className="absolute left-[5px] top-4 bottom-0 w-0.5"
+                            style={{ background: 'var(--border)' }}
+                          />
+                        )}
                         {/* Timeline point */}
-                        <div className="absolute -left-[31px] top-1.5 w-3 h-3 rounded-full bg-indigo-500 border-2 border-slate-900 group-hover:bg-purple-500 transition-colors"></div>
+                        <div className="absolute left-0 top-1.5 w-3 h-3 rounded-full border-2 transition-colors"
+                             style={{
+                               background: 'var(--bg-base)',
+                               borderColor: 'var(--accent)'
+                             }}></div>
                         <div className="flex justify-between items-start flex-wrap gap-2">
                           <div>
-                            <h4 className="font-bold text-white text-base">{exp.role}</h4>
-                            <p className="text-sm text-indigo-400 font-medium">{exp.company}</p>
+                            <h4 className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>{exp.role}</h4>
+                            <p className="text-sm font-semibold" style={{ color: 'var(--text-link)' }}>{exp.company}</p>
                           </div>
-                          <span className="text-xs text-slate-500 font-medium px-2.5 py-1 bg-slate-950/40 rounded-full border border-slate-800/80">
+                          <span className="text-xs font-semibold px-2.5 py-1 rounded-full border"
+                                style={{
+                                  background: 'var(--bg-glass)',
+                                  borderColor: 'var(--border)',
+                                  color: 'var(--text-secondary)'
+                                }}>
                             {exp.duration}
                           </span>
                         </div>
                         {exp.highlights && exp.highlights.length > 0 && (
-                          <ul className="list-disc list-outside ml-4 mt-3 text-sm text-slate-400 space-y-1.5">
+                          <ul className="list-disc list-outside ml-4 mt-3 text-sm space-y-1.5" style={{ color: 'var(--text-secondary)' }}>
                             {exp.highlights.map((bullet, bidx) => (
                               <li key={bidx}>{bullet}</li>
                             ))}
@@ -235,27 +275,36 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-500 italic">No work experience extracted.</p>
+                  <p className="text-sm italic" style={{ color: 'var(--text-muted)' }}>No work experience extracted.</p>
                 )}
               </div>
 
               {/* Projects Card */}
-              <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 shadow-md">
-                <h3 className="text-xl font-bold text-white mb-6 flex items-center">
+              <div className="glass-card p-6 shadow-md entrance-anim delay-150 flex-grow flex flex-col">
+                <h3 className="text-xl font-bold mb-6 flex items-center" style={{ color: 'var(--text-primary)' }}>
                   <span className="mr-3">⚙️</span> Projects
                 </h3>
                 {profile.projects && profile.projects.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-grow">
                     {profile.projects.map((proj, idx) => (
-                      <div key={idx} className="bg-slate-950/40 border border-slate-800 p-4 rounded-xl flex flex-col justify-between hover:border-slate-700/60 transition-all duration-200">
+                      <div key={idx} className="border p-4 rounded-xl flex flex-col justify-between hover-lift transition-all duration-200"
+                           style={{
+                             background: 'var(--bg-glass)',
+                             borderColor: 'var(--border)'
+                           }}>
                         <div>
-                          <h4 className="font-bold text-white text-sm mb-2">{proj.name}</h4>
-                          <p className="text-xs text-slate-400 leading-relaxed mb-4">{proj.description}</p>
+                          <h4 className="font-bold text-sm mb-2" style={{ color: 'var(--text-primary)' }}>{proj.name}</h4>
+                          <p className="text-xs leading-relaxed mb-4" style={{ color: 'var(--text-secondary)' }}>{proj.description}</p>
                         </div>
                         {proj.tech && proj.tech.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-900">
+                          <div className="flex flex-wrap gap-1.5 pt-2 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                             {proj.tech.map((t, tidx) => (
-                              <span key={tidx} className="text-[10px] bg-slate-900 border border-slate-800 text-indigo-400 font-medium px-2 py-0.5 rounded">
+                              <span key={tidx} className="text-[9px] border font-bold px-2 py-0.5 rounded"
+                                    style={{
+                                      background: 'var(--accent-soft)',
+                                      borderColor: 'var(--border)',
+                                      color: 'var(--text-link)'
+                                    }}>
                                 {t}
                               </span>
                             ))}
@@ -265,30 +314,35 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-500 italic">No projects extracted.</p>
+                  <p className="text-sm italic" style={{ color: 'var(--text-muted)' }}>No projects extracted.</p>
                 )}
               </div>
 
             </div>
 
             {/* Sidebar Details (Col-span 1) */}
-            <div className="space-y-6">
+            <div className="flex flex-col space-y-6">
               
               {/* Profile Links & Metadata */}
-              <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 shadow-md">
-                <h3 className="text-lg font-bold text-white mb-4">Contact & Links</h3>
+              <div className="glass-card p-6 shadow-md entrance-anim delay-200">
+                <h3 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>Contact & Links</h3>
                 <div className="space-y-3">
                   {profile.links?.linkedin && (
                     <a
                       href={profile.links.linkedin}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center space-x-3 p-3 rounded-xl bg-slate-950/40 hover:bg-slate-950 border border-slate-800 text-slate-300 hover:text-white transition group text-sm"
+                      className="flex items-center space-x-3 p-3 rounded-xl hover-lift border text-sm transition"
+                      style={{
+                        background: 'var(--bg-glass)',
+                        borderColor: 'var(--border)',
+                        color: 'var(--text-secondary)'
+                      }}
                     >
                       <span className="text-lg">🔗</span>
                       <div className="truncate">
-                        <p className="text-[10px] text-slate-500 font-semibold uppercase leading-none mb-0.5">LinkedIn</p>
-                        <p className="truncate text-xs">{profile.links.linkedin}</p>
+                        <p className="text-[9px] font-bold uppercase leading-none mb-1" style={{ color: 'var(--text-muted)' }}>LinkedIn</p>
+                        <p className="truncate text-xs font-semibold" style={{ color: 'var(--text-link)' }}>{profile.links.linkedin}</p>
                       </div>
                     </a>
                   )}
@@ -297,12 +351,17 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
                       href={profile.links.github}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center space-x-3 p-3 rounded-xl bg-slate-950/40 hover:bg-slate-950 border border-slate-800 text-slate-300 hover:text-white transition group text-sm"
+                      className="flex items-center space-x-3 p-3 rounded-xl hover-lift border text-sm transition"
+                      style={{
+                        background: 'var(--bg-glass)',
+                        borderColor: 'var(--border)',
+                        color: 'var(--text-secondary)'
+                      }}
                     >
                       <span className="text-lg">🐙</span>
                       <div className="truncate">
-                        <p className="text-[10px] text-slate-500 font-semibold uppercase leading-none mb-0.5">GitHub</p>
-                        <p className="truncate text-xs">{profile.links.github}</p>
+                        <p className="text-[9px] font-bold uppercase leading-none mb-1" style={{ color: 'var(--text-muted)' }}>GitHub</p>
+                        <p className="truncate text-xs font-semibold" style={{ color: 'var(--text-link)' }}>{profile.links.github}</p>
                       </div>
                     </a>
                   )}
@@ -311,73 +370,94 @@ const ResumeUpload = ({ profile, onUploadSuccess }) => {
                       href={profile.links.portfolio}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center space-x-3 p-3 rounded-xl bg-slate-950/40 hover:bg-slate-950 border border-slate-800 text-slate-300 hover:text-white transition group text-sm"
+                      className="flex items-center space-x-3 p-3 rounded-xl hover-lift border text-sm transition"
+                      style={{
+                        background: 'var(--bg-glass)',
+                        borderColor: 'var(--border)',
+                        color: 'var(--text-secondary)'
+                      }}
                     >
                       <span className="text-lg">🌐</span>
                       <div className="truncate">
-                        <p className="text-[10px] text-slate-500 font-semibold uppercase leading-none mb-0.5">Portfolio</p>
-                        <p className="truncate text-xs">{profile.links.portfolio}</p>
+                        <p className="text-[9px] font-bold uppercase leading-none mb-1" style={{ color: 'var(--text-muted)' }}>Portfolio</p>
+                        <p className="truncate text-xs font-semibold" style={{ color: 'var(--text-link)' }}>{profile.links.portfolio}</p>
                       </div>
                     </a>
                   )}
                   {(!profile.links?.linkedin && !profile.links?.github && !profile.links?.portfolio) && (
-                    <p className="text-xs text-slate-500 italic">No links extracted.</p>
+                    <p className="text-xs italic" style={{ color: 'var(--text-muted)' }}>No links extracted.</p>
                   )}
                 </div>
               </div>
 
               {/* Skills Card */}
-              <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 shadow-md">
-                <h3 className="text-lg font-bold text-white mb-4 flex items-center">
+              <div className="glass-card p-6 shadow-md entrance-anim delay-250">
+                <h3 className="text-lg font-bold mb-4 flex items-center" style={{ color: 'var(--text-primary)' }}>
                   <span className="mr-2">💡</span> Skills
                 </h3>
                 {profile.skills && profile.skills.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
-                    {profile.skills.map((skill, idx) => (
-                      <span
-                        key={idx}
-                        className="text-xs bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-semibold px-3 py-1 rounded-lg"
-                      >
-                        {skill}
-                      </span>
-                    ))}
+                    {profile.skills.map((skill, idx) => {
+                      const skillsConfidence = profile.confidence?.skills || 0.8;
+                      const primaryCount = Math.ceil(profile.skills.length * skillsConfidence);
+                      const isPrimary = idx < primaryCount;
+                      return (
+                        <span
+                          key={idx}
+                          className="text-xs font-semibold px-3 py-1 rounded-lg border transition-all duration-200"
+                          style={{
+                            background: isPrimary ? 'var(--accent)' : 'var(--accent-soft)',
+                            borderColor: 'var(--border)',
+                            color: isPrimary ? 'white' : 'var(--text-link)',
+                            boxShadow: isPrimary ? '0 2px 8px rgba(99, 102, 241, 0.2)' : 'none'
+                          }}
+                        >
+                          {skill}
+                        </span>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-500 italic">No skills extracted.</p>
+                  <p className="text-sm italic" style={{ color: 'var(--text-muted)' }}>No skills extracted.</p>
                 )}
               </div>
 
               {/* Education Card */}
-              <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 shadow-md">
-                <h3 className="text-lg font-bold text-white mb-4 flex items-center">
+              <div className={`glass-card p-6 shadow-md entrance-anim delay-300 flex flex-col ${(!profile.certifications || profile.certifications.length === 0) ? 'flex-grow' : ''}`}>
+                <h3 className="text-lg font-bold mb-4 flex items-center" style={{ color: 'var(--text-primary)' }}>
                   <span className="mr-2">🎓</span> Education
                 </h3>
                 {profile.education && profile.education.length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="space-y-4 flex-grow">
                     {profile.education.map((edu, idx) => (
-                      <div key={idx} className="border-l-2 border-indigo-500/40 pl-3">
-                        <h4 className="font-bold text-white text-xs">{edu.degree}</h4>
-                        <p className="text-[11px] text-slate-400">{edu.institution}</p>
-                        <p className="text-[10px] text-slate-500 font-medium mt-0.5">{edu.year}</p>
+                      <div key={idx} className="border-l-2 pl-3" style={{ borderColor: 'var(--accent)' }}>
+                        <h4 className="font-bold text-xs" style={{ color: 'var(--text-primary)' }}>{edu.degree}</h4>
+                        <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{edu.institution}</p>
+                        <p className="text-[10px] font-medium mt-0.5" style={{ color: 'var(--text-muted)' }}>{edu.year}</p>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-500 italic">No education history extracted.</p>
+                  <p className="text-sm italic" style={{ color: 'var(--text-muted)' }}>No education history extracted.</p>
                 )}
               </div>
 
               {/* Certifications Card */}
               {profile.certifications && profile.certifications.length > 0 && (
-                <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 shadow-md">
-                  <h3 className="text-lg font-bold text-white mb-4 flex items-center">
+                <div className="glass-card p-6 shadow-md entrance-anim delay-350 flex-grow flex flex-col">
+                  <h3 className="text-lg font-bold mb-4 flex items-center" style={{ color: 'var(--text-primary)' }}>
                     <span className="mr-2">🎗️</span> Certifications
                   </h3>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1.5 flex-grow content-start">
                     {profile.certifications.map((cert, idx) => (
                       <span
                         key={idx}
-                        className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-semibold px-2.5 py-1 rounded-md"
+                        className="text-[10px] font-bold px-2.5 py-1 rounded-md border self-start"
+                        style={{
+                          background: 'rgba(52, 211, 153, 0.08)',
+                          borderColor: 'rgba(52, 211, 153, 0.20)',
+                          color: '#34d399'
+                        }}
                       >
                         {cert}
                       </span>

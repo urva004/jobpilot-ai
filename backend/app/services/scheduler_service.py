@@ -3,24 +3,26 @@ import datetime
 import uuid
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
-from app.models import CandidateProfile, Job, Notification, SchedulerSettings
+from app.models import CandidateProfile, Job, Notification, SchedulerSettings, SentEmail
 from app.services.job_service import JobService
 from app.services.chroma_service import ChromaService
 from app.services.mistral_service import MistralService
 
 class SchedulerService:
     @staticmethod
-    def get_or_create_settings(db: Session) -> SchedulerSettings:
-        settings = db.query(SchedulerSettings).filter(SchedulerSettings.id == "default").first()
+    def get_or_create_settings(db: Session, user_id: str = "default") -> SchedulerSettings:
+        settings = db.query(SchedulerSettings).filter(SchedulerSettings.user_id == user_id).first()
         if not settings:
             settings = SchedulerSettings(
-                id="default",
+                id=f"settings_{user_id}",
                 keywords="Python, React, FastAPI, Software Engineer",
                 location="India",
                 remote_only=False,
                 match_threshold=70.0,
                 interval_hours=24.0,
-                is_enabled=True
+                experience_level="any",
+                is_enabled=True,
+                user_id=user_id
             )
             db.add(settings)
             try:
@@ -31,10 +33,10 @@ class SchedulerService:
         return settings
 
     @classmethod
-    def run_matching_cycle(cls, db: Session) -> dict:
-        """Runs the search + semantic matching + notification generation process."""
-        settings = cls.get_or_create_settings(db)
-        profile = db.query(CandidateProfile).order_by(CandidateProfile.created_at.desc()).first()
+    def run_matching_cycle(cls, db: Session, user_id: str = "default") -> dict:
+        """Runs the search + semantic matching + notification generation process for a specific user."""
+        settings = cls.get_or_create_settings(db, user_id)
+        profile = db.query(CandidateProfile).filter(CandidateProfile.user_id == user_id).order_by(CandidateProfile.created_at.desc()).first()
         if not profile:
             return {"status": "skipped", "reason": "No candidate profile found. Please upload a resume first."}
 
@@ -62,6 +64,11 @@ class SchedulerService:
                 jobs = JobService.search_and_save(db, kw, settings.location, settings.remote_only)
                 new_jobs_found += len(jobs)
 
+                # Filter by experience level if configured
+                exp_filter = getattr(settings, 'experience_level', 'any')
+                if exp_filter and exp_filter != 'any':
+                    jobs = [j for j in jobs if j.experience_level == exp_filter]
+
                 for job in jobs:
                     # Check if match was already calculated/stored or if we need to compute similarity
                     job_vec_id = f"job_{job.id}"
@@ -86,8 +93,11 @@ class SchedulerService:
                     if match_percent >= settings.match_threshold:
                         new_matches_found += 1
                         
-                        # Check if notification already exists for this job
-                        existing = db.query(Notification).filter(Notification.job_id == job.id).first()
+                        # Check if notification already exists for this job and user
+                        existing = db.query(Notification).filter(
+                            Notification.job_id == job.id,
+                            Notification.user_id == user_id
+                        ).first()
                         if not existing:
                             notif = Notification(
                                 id=str(uuid.uuid4()),
@@ -96,7 +106,8 @@ class SchedulerService:
                                 job_id=job.id,
                                 match_percent=match_percent,
                                 is_read=False,
-                                created_at=datetime.datetime.utcnow()
+                                created_at=datetime.datetime.utcnow(),
+                                user_id=user_id
                             )
                             db.add(notif)
                             notifications_created.append({
@@ -106,6 +117,12 @@ class SchedulerService:
                             })
             except Exception as e:
                 print(f"Error processing keyword '{kw}' in scheduler: {str(e)}")
+
+        # Check follow-up reminders
+        try:
+            cls.generate_followup_notifications(db, user_id)
+        except Exception as followup_err:
+            print(f"Error triggering followup notifications: {followup_err}")
 
         settings.last_run = datetime.datetime.utcnow()
         try:
@@ -121,6 +138,54 @@ class SchedulerService:
             "notifications_created": notifications_created
         }
 
+    @classmethod
+    def generate_followup_notifications(cls, db: Session, user_id: str = "default"):
+        """Checks for applications sent via email that have been 'applied' for > 7 days, and issues a follow-up notification."""
+        try:
+            import datetime
+            seven_days_ago = datetime.date.today() - datetime.timedelta(days=7)
+            seven_days_ago_str = seven_days_ago.isoformat()
+            
+            # Find applications where status is 'applied' and user_id matches
+            old_apps = db.query(Application).filter(
+                Application.status == "applied",
+                Application.applied_date != None,
+                Application.applied_date <= seven_days_ago_str,
+                Application.user_id == user_id
+            ).all()
+            
+            for app in old_apps:
+                # Check if a follow-up notification already exists for this job
+                notif_title = f"Follow-Up Reminder: {app.company}"
+                existing = db.query(Notification).filter(
+                    Notification.job_id == app.job_id,
+                    Notification.user_id == user_id,
+                    Notification.title.like("Follow-Up Reminder%")
+                ).first()
+                
+                if not existing:
+                    # Verify if this was sent via email (exists in SentEmail table)
+                    email_sent = db.query(SentEmail).filter(
+                        SentEmail.job_id == app.job_id,
+                        SentEmail.user_id == user_id
+                    ).first()
+                    if email_sent:
+                        notif = Notification(
+                            id=str(uuid.uuid4()),
+                            title=notif_title,
+                            message=f"It has been over 7 days since you applied to {app.company} for the {app.position} position. Consider sending a polite follow-up email.",
+                            job_id=app.job_id,
+                            match_percent=app.match_percent or 0.0,
+                            is_read=False,
+                            created_at=datetime.datetime.utcnow(),
+                            user_id=user_id
+                        )
+                        db.add(notif)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"Error generating follow-up notifications: {str(e)}")
+
 # Background thread runner
 async def start_scheduler_loop():
     """An infinite async loop that periodically runs the matching cycle if enabled."""
@@ -131,29 +196,23 @@ async def start_scheduler_loop():
         
         db = SessionLocal()
         try:
-            settings = db.query(SchedulerSettings).filter(SchedulerSettings.id == "default").first()
-            if not settings:
-                # Create default settings
-                SchedulerService.get_or_create_settings(db)
-                continue
-
-            if not settings.is_enabled:
-                continue
-
-            # Check if interval has elapsed
-            now = datetime.datetime.utcnow()
-            should_run = False
-            if not settings.last_run:
-                should_run = True
-            else:
-                elapsed = now - settings.last_run
-                if elapsed >= datetime.timedelta(hours=settings.interval_hours):
+            # Get all active user scheduler settings
+            settings_list = db.query(SchedulerSettings).filter(SchedulerSettings.is_enabled == True).all()
+            for settings in settings_list:
+                # Check if interval has elapsed
+                now = datetime.datetime.utcnow()
+                should_run = False
+                if not settings.last_run:
                     should_run = True
+                else:
+                    elapsed = now - settings.last_run
+                    if elapsed >= datetime.timedelta(hours=settings.interval_hours):
+                        should_run = True
 
-            if should_run:
-                print(f"Background Scheduler: Starting matching cycle for keywords: {settings.keywords}")
-                result = SchedulerService.run_matching_cycle(db)
-                print(f"Background Scheduler: Match run finished: {result}")
+                if should_run:
+                    print(f"Background Scheduler: Starting matching cycle for user {settings.user_id} with keywords: {settings.keywords}")
+                    result = SchedulerService.run_matching_cycle(db, user_id=settings.user_id)
+                    print(f"Background Scheduler: Match run finished: {result}")
         except Exception as e:
             print(f"Error in scheduler background loop: {str(e)}")
         finally:

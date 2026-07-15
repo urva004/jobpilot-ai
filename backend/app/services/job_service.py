@@ -232,6 +232,70 @@ class JobService:
         return normalized_mock
 
     @classmethod
+    def classify_experience_level(cls, title: str, description: str) -> str:
+        text = (title + " " + description).lower()
+        
+        # 1. Fresher / Intern (0-1 years)
+        if any(kw in text for kw in ["fresher", "intern", "internship", "graduate trainee", "apprentice"]):
+            return "fresher"
+        if re.search(r'\b0\s*(?:-|to)\s*1\s*years?\b', text) or re.search(r'\bno\s+experience\s+required\b', text):
+            return "fresher"
+            
+        # 2. 5+ years (Senior/Lead/Architect/5+ years)
+        if any(kw in text for kw in ["senior", "lead", "architect", "principal", "director", "manager", "staff engineer"]):
+            return "5_plus_years"
+        if re.search(r'\b(?:5\s*\+|5\s*to\s*[0-9]+|6\s*\+|7\s*\+|8\s*\+|10\s*\+)\s*years?\b', text):
+            return "5_plus_years"
+        if re.search(r'\b(?:[5-9]|1[0-9])\+?\s*years?\b', text):
+            return "5_plus_years"
+
+        # 3. 3-5 years
+        if re.search(r'\b(?:3\s*(?:-|to)\s*5|2\s*(?:-|to)\s*4|3\s*(?:-|to)\s*4|4\s*\+|3\s*\+|4\s*years?)\b', text):
+            return "3_5_years"
+        if "mid level" in text or "mid-level" in text or "intermediate" in text:
+            return "3_5_years"
+
+        # 4. 1-2 years
+        if re.search(r'\b(?:1\s*(?:-|to)\s*2|1\s*(?:-|to)\s*3|1\s*\+|2\s*\+|1\s*year|2\s*years?)\b', text):
+            return "1_2_years"
+        if "junior" in text or "jr." in text or "associate developer" in text or "associate engineer" in text:
+            return "1_2_years"
+
+        # 5. Fallback to Mistral call
+        try:
+            import json
+            from app.services.mistral_service import MistralService
+            prompt = f"""\
+Given the job title and description, classify the required experience level into exactly one of these categories:
+- fresher (0-1 years, intern, entry level)
+- 1_2_years (1-2 years)
+- 3_5_years (3-5 years)
+- 5_plus_years (5+ years, senior, lead, architect)
+- unspecified (if absolutely no experience information is provided)
+
+Return ONLY a JSON object with this exact structure:
+{{
+  "experience_level": "fresher" | "1_2_years" | "3_5_years" | "5_plus_years" | "unspecified"
+}}
+
+Job Title: {title}
+Job Description (excerpt): {description[:1000]}
+"""
+            messages = [
+                {"role": "system", "content": "You are a job classification assistant. Always reply with valid JSON only."},
+                {"role": "user", "content": prompt}
+            ]
+            response_text = MistralService.chat_complete(messages, response_format={"type": "json_object"})
+            data = json.loads(response_text)
+            level = data.get("experience_level", "unspecified")
+            if level in ["fresher", "1_2_years", "3_5_years", "5_plus_years", "unspecified"]:
+                return level
+        except Exception as e:
+            print(f"Mistral classification failed: {str(e)}")
+            
+        return "unspecified"
+
+    @classmethod
     def search_and_save(cls, db: Session, keywords: str, location: str, remote: bool) -> list[Job]:
         adzuna_results = cls.fetch_adzuna_jobs(keywords, location, remote)
         jsearch_results = cls.fetch_jsearch_jobs(keywords, location, remote)
@@ -240,7 +304,7 @@ class JobService:
         
         if not all_results:
             all_results = cls.get_mock_jobs(keywords, location, remote)
-
+ 
         seen_ids = set()
         unique_results = []
         for job_dict in all_results:
@@ -250,10 +314,18 @@ class JobService:
 
         saved_jobs = []
         for job_data in unique_results:
+            # Classify experience level
+            exp_level = cls.classify_experience_level(
+                title=job_data.get("title", ""),
+                description=job_data.get("description", "")
+            )
+            job_data["experience_level"] = exp_level
+
             db_job = db.query(Job).filter(Job.id == job_data["id"]).first()
             if db_job:
                 db_job.description = job_data["description"]
                 db_job.apply_url = job_data["apply_url"]
+                db_job.experience_level = exp_level
                 db_job.fetched_at = datetime.datetime.utcnow()
                 saved_jobs.append(db_job)
             else:
@@ -270,3 +342,4 @@ class JobService:
             print(f"Error saving jobs to database: {str(e)}")
 
         return saved_jobs
+

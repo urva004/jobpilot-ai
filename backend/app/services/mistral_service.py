@@ -67,8 +67,20 @@ JSON Structure to return:
     "github": "URL or empty string",
     "linkedin": "URL or empty string",
     "portfolio": "URL or empty string"
+  }},
+  "confidence": {{
+    "skills": 0.0,
+    "experience": 0.0,
+    "education": 0.0,
+    "overall": 0.0
   }}
 }}
+
+For the "confidence" block: assign a score between 0.0 and 1.0 for each field:
+- skills: how clearly and completely the skills section is stated (1.0 = explicit list, 0.3 = inferred from context only)
+- experience: how clearly roles, companies, durations, and responsibilities are documented (1.0 = full details, 0.3 = vague or partial)
+- education: how clearly degree, institution, and year are stated (1.0 = all three present, 0.3 = missing key details)
+- overall: weighted average of all three above
 
 Ensure that you match this structure exactly. Do not add any text outside of the JSON object.
 Extract all links (especially GitHub, LinkedIn, portfolio/personal website links) and put them in the "links" object. If none are found, set them to empty strings.
@@ -80,7 +92,7 @@ Resume Text:
             {"role": "system", "content": "You are an expert resume parsing AI. Extract clean structured data from the provided resume text. Always reply with a valid JSON object matching the requested schema."},
             {"role": "user", "content": prompt}
         ]
-        
+
         response_text = cls.chat_complete(messages, response_format={"type": "json_object"})
         try:
             profile_data = json.loads(response_text)
@@ -310,4 +322,184 @@ Job Description (excerpt):
             return json.loads(response_text)
         except Exception as e:
             print(f"Failed to parse {email_type} email JSON:", response_text)
+            raise e
+
+    @classmethod
+    def generate_interview_prep(cls, job_description: str, candidate_profile: dict) -> dict:
+        """Generate structured interview questions with full answers for a specific job and candidate profile."""
+        profile_summary = f"""
+Skills: {', '.join(candidate_profile.get('skills', [])[:20])}
+Experience roles: {', '.join([e.get('role','') for e in candidate_profile.get('experience', [])])}
+Projects: {', '.join([p.get('name','') for p in candidate_profile.get('projects', [])])}
+Education: {', '.join([e.get('degree','') + ' @ ' + e.get('institution','') for e in candidate_profile.get('education', [])])}
+"""
+        experience_details = json.dumps({
+            "experience": candidate_profile.get("experience", []),
+            "projects": candidate_profile.get("projects", []),
+        }, indent=2)
+
+        prompt = f"""\
+You are a senior technical interviewer and career coach. Based on the job description and candidate profile below, generate a comprehensive set of interview questions — each with a full, model answer tailored to this specific candidate's actual experience and projects.
+
+Return ONLY a valid JSON object with this exact structure:
+{{
+  "technical_questions": [
+    {{
+      "question": "Specific technical question relevant to the JD tech stack",
+      "tip": "What the interviewer is really testing / what to emphasize in your answer",
+      "sample_answer": "A first-person, 3-5 sentence model answer that references this candidate's actual skills/projects where relevant. Sound natural, not rehearsed."
+    }}
+  ],
+  "coding_questions": [
+    {{
+      "question": "Coding problem or algorithm question relevant to this role",
+      "difficulty": "easy|medium|hard",
+      "hint": "Approach hint or data structure to consider",
+      "approach_explanation": "2-3 sentence plain-English explanation of the optimal approach and why it works",
+      "solution_code": "Complete, working, commented code that solves the problem",
+      "solution_language": "python|javascript|java|cpp"
+    }}
+  ],
+  "system_design_questions": [
+    {{
+      "question": "System design scenario relevant to this role/domain",
+      "focus_areas": ["scalability", "database choice", "API design"],
+      "sample_answer": "A structured 4-6 sentence answer walking through high-level architecture, key components, tradeoffs, and scaling strategy. Reference the candidate's actual project experience where it applies."
+    }}
+  ],
+  "hr_questions": [
+    {{
+      "question": "HR or culture-fit question",
+      "tip": "What to emphasize in your answer based on this company/role",
+      "sample_answer": "A first-person, 2-4 sentence answer that is specific and grounded — references real (but plausible) situations from the candidate's experience."
+    }}
+  ],
+  "behavioral_questions": [
+    {{
+      "question": "Behavioral STAR-format question",
+      "framework_tip": "Suggested STAR structure: Situation about X, Task involving Y, Action using Z skill, Result with measurable outcome",
+      "sample_answer": "A complete STAR-format answer in first person. Reference one of the candidate's actual projects or roles to ground it in their real experience. 5-7 sentences."
+    }}
+  ]
+}}
+
+Rules:
+- Generate exactly 4-5 questions per category (20-25 total).
+- All questions and answers must be specific to this JD and candidate — no generic filler.
+- technical_questions must reference actual technologies mentioned in the JD.
+- coding_questions: solution_code must be complete, syntactically correct, and commented.
+- sample_answer fields must be written in first person ("I built...", "In my project...").
+- ONLY reference experience and projects that exist in the candidate profile — do not fabricate.
+- For coding questions, choose the most appropriate language (prefer Python unless JD specifies otherwise).
+
+Job Description:
+{job_description[:2000]}
+
+Candidate Profile Summary:
+{profile_summary}
+
+Candidate Experience & Projects (for grounding answers):
+{experience_details[:1500]}
+"""
+        messages = [
+            {"role": "system", "content": "You are an expert technical interviewer. Always reply with a valid JSON object matching the exact schema. No markdown fences or extra text outside the JSON."},
+            {"role": "user", "content": prompt}
+        ]
+        response_text = cls.chat_complete(messages, response_format={"type": "json_object"})
+        try:
+            return json.loads(response_text)
+        except Exception as e:
+            print("Failed to parse interview prep JSON:", response_text)
+            raise e
+
+    @classmethod
+    def generate_resume_variants(cls, candidate_profile: dict) -> dict:
+        """Generate 3 resume framings (Backend, AI/ML, Data) from the same base profile in one call.
+        
+        CONSTRAINT: This only reframes/rewords/reorders existing experience.
+        It never fabricates new roles, companies, degrees, or skills.
+        """
+        profile_json = json.dumps({
+            "skills": candidate_profile.get("skills", []),
+            "experience": candidate_profile.get("experience", []),
+            "projects": candidate_profile.get("projects", []),
+            "education": candidate_profile.get("education", []),
+            "certifications": candidate_profile.get("certifications", []),
+        }, indent=2)
+
+        prompt = f"""\
+You are an expert resume writer. Given the single candidate profile below, produce three distinct resume framings.
+
+IMPORTANT CONSTRAINT: You may ONLY reorder, reword, and re-emphasize content that already exists in the profile. Do NOT invent new job titles, companies, skills, degrees, projects, or experiences that are not present in the candidate profile. Your job is reframing, not fabrication.
+
+Return ONLY a valid JSON object with this exact structure:
+{{
+  "variants": [
+    {{
+      "variant": "backend",
+      "professional_summary": "2-3 sentence summary emphasizing backend/full-stack/API/system architecture angle",
+      "reordered_skills": ["Most relevant backend/infra skills first, then others from their actual skill list"],
+      "reworded_experience_bullets": [
+        {{
+          "original_role": "Exact role name from their experience",
+          "bullets": [
+            "• Reworded bullet emphasizing backend/API/system architecture achievements from EXISTING highlights",
+            "• Another bullet focusing on scalability, database, or infrastructure work they actually did"
+          ]
+        }}
+      ],
+      "highlighted_projects": ["Project names from their profile most relevant to backend/full-stack work"]
+    }},
+    {{
+      "variant": "ai_ml",
+      "professional_summary": "2-3 sentence summary emphasizing ML models, embeddings, RAG, LLM integration angle",
+      "reordered_skills": ["Most relevant AI/ML skills first, then others from their actual skill list"],
+      "reworded_experience_bullets": [
+        {{
+          "original_role": "Exact role name from their experience",
+          "bullets": [
+            "• Reworded bullet emphasizing ML, data science, or AI integration work they actually did",
+            "• Another bullet focusing on model training, evaluation, or deployment they actually did"
+          ]
+        }}
+      ],
+      "highlighted_projects": ["Project names from their profile most relevant to AI/ML work"]
+    }},
+    {{
+      "variant": "data",
+      "professional_summary": "2-3 sentence summary emphasizing data pipelines, dashboards, SQL, analytics angle",
+      "reordered_skills": ["Most relevant data/analytics/SQL skills first, then others from their actual skill list"],
+      "reworded_experience_bullets": [
+        {{
+          "original_role": "Exact role name from their experience",
+          "bullets": [
+            "• Reworded bullet emphasizing data pipeline, ETL, dashboard, or analytics work they actually did",
+            "• Another bullet focusing on SQL, reporting, or business intelligence work they actually did"
+          ]
+        }}
+      ],
+      "highlighted_projects": ["Project names from their profile most relevant to data/analytics work"]
+    }}
+  ]
+}}
+
+Rules:
+- Each professional_summary must be unique and specifically tailored to that variant's angle.
+- reordered_skills must only contain skills from the candidate's actual skill list — just reordered by relevance.
+- reworded_experience_bullets must only reword highlights that actually exist in the profile — no new bullets.
+- highlighted_projects must only name projects that actually exist in the profile.
+- If the profile lacks data for a specific angle (e.g., no ML work), be honest and minimal rather than fabricating.
+
+Candidate Profile:
+{profile_json}
+"""
+        messages = [
+            {"role": "system", "content": "You are an expert resume writer. You reframe, never fabricate. Always reply with a valid JSON object. No markdown fences or extra text outside the JSON."},
+            {"role": "user", "content": prompt}
+        ]
+        response_text = cls.chat_complete(messages, response_format={"type": "json_object"})
+        try:
+            return json.loads(response_text)
+        except Exception as e:
+            print("Failed to parse resume variants JSON:", response_text)
             raise e
