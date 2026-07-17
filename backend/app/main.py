@@ -1448,7 +1448,10 @@ def update_scheduler_settings(payload: SchedulerSettingsUpdate, db: Session = De
 @app.post("/scheduler/trigger")
 def trigger_scheduler_matching(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Run the scheduler matching cycle manually and return the results immediately."""
-    result = SchedulerService.run_sweep_event(db, current_user.id)
+    if hasattr(SchedulerService, "run_sweep_event"):
+        result = SchedulerService.run_sweep_event(db, current_user.id)
+    else:
+        result = SchedulerService.run_matching_cycle(db, current_user.id)
     return result
 
 
