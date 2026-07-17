@@ -24,3 +24,21 @@ SMTP_EMAIL    = os.getenv("SMTP_EMAIL", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
+
+# Environment and Email Mocking Safety Gate
+ENV = os.getenv("ENV", "production").lower()
+MOCK_EMAIL_RAW = os.getenv("MOCK_EMAIL") == "true"
+MOCK_EMAIL = False
+
+if MOCK_EMAIL_RAW:
+    if ENV in ["test", "dev", "development"]:
+        MOCK_EMAIL = True
+    else:
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger("jobpilot")
+        logger.warning(
+            "CRITICAL SECURITY WARNING: MOCK_EMAIL is set to true, but ENV is set to '%s'. "
+            "Forcing MOCK_EMAIL to False to prevent accidental email bypass in production!",
+            ENV
+        )
