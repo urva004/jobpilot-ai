@@ -1,7 +1,8 @@
 import smtplib
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from app.config import SMTP_EMAIL, SMTP_PASSWORD, SMTP_HOST, SMTP_PORT, MOCK_EMAIL
+from app.config import SMTP_EMAIL, SMTP_PASSWORD, SMTP_HOST, SMTP_PORT, MOCK_EMAIL, RESEND_API_KEY
 import builtins
 
 def print(*args, **kwargs):
@@ -77,6 +78,44 @@ def send_otp_email(to_email: str, otp: str, purpose: str) -> bool:
         """
 
     msg.attach(MIMEText(html_content, "html"))
+
+    subject = msg.get("Subject") or "Verification Code"
+
+    # Try sending via Resend API if configured
+    if RESEND_API_KEY:
+        print("\n" + "--- RESEND API OTP DISPATCH REQUEST ---")
+        print(f"Recipient (To): {to_email}")
+        print(f"Subject: {subject}")
+        print(f"Purpose: {purpose}")
+        print("---------------------------------------")
+        
+        # Sanity check
+        if not to_email or "@" not in to_email:
+            print(f"[RESEND ERROR] Invalid recipient email address: '{to_email}'")
+            return False
+            
+        try:
+            print("[RESEND] Sending HTTP POST request...")
+            headers = {
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "from": "JobPilot AI <onboarding@resend.dev>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content
+            }
+            res = requests.post("https://api.resend.com/emails", headers=headers, json=payload, timeout=10)
+            if res.status_code in [200, 201, 202]:
+                print(f"[RESEND SUCCESS] Email accepted by provider. Response: {res.text}")
+                return True
+            else:
+                print(f"[RESEND ERROR] Code: {res.status_code}, Response: {res.text}")
+                print("[RESEND] Falling back to SMTP configuration...")
+        except Exception as e:
+            print(f"[RESEND ERROR] HTTP request exception: {e}")
+            print("[RESEND] Falling back to SMTP configuration...")
 
     # Detailed logging of the outgoing request
     print("\n" + "--- SMTP OTP DISPATCH REQUEST ---")

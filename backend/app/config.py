@@ -25,6 +25,9 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
 
+# Resend API (for transactional emails on Render Free Tier)
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+
 # Environment and Email Mocking Safety Gate
 ENV = os.getenv("ENV", "production").lower()
 MOCK_EMAIL_RAW = os.getenv("MOCK_EMAIL") == "true"
