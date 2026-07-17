@@ -1,7 +1,13 @@
+import sys
+import asyncio
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 import uuid
 from typing import Optional, List, Dict, Any, Union
 import json
-from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -264,7 +270,7 @@ app.add_middleware(
 
 
 @app.post("/auth/signup", response_model=UserResponse)
-def auth_signup(payload: UserSignup, request: Request, db: Session = Depends(get_db)):
+def auth_signup(payload: UserSignup, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     rate_limit_auth(request.client.host)
     # Check if user already exists
     existing = db.query(User).filter(User.email == payload.email.lower().strip()).first()
@@ -315,13 +321,17 @@ def auth_signup(payload: UserSignup, request: Request, db: Session = Depends(get
     db.commit()
     db.refresh(user)
     
-    # Send verification email
-    send_otp_email(user.email, otp_code, "verify_email")
+    # Send verification email asynchronously
+    background_tasks.add_task(send_otp_email, user.email, otp_code, "verify_email")
     
+    from app.config import MOCK_EMAIL
+    if MOCK_EMAIL:
+        user.mock_otp = otp_code
+        
     return user
 
 @app.post("/auth/login", response_model=TokenResponse)
-def auth_login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
+def auth_login(payload: UserLogin, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     rate_limit_auth(request.client.host)
     user = db.query(User).filter(User.email == payload.email.lower().strip()).first()
     if not user or not verify_password(payload.password, user.hashed_password):
@@ -340,7 +350,7 @@ def auth_login(payload: UserLogin, request: Request, db: Session = Depends(get_d
         )
         db.add(otp_token)
         db.commit()
-        send_otp_email(user.email, otp_code, "verify_email")
+        background_tasks.add_task(send_otp_email, user.email, otp_code, "verify_email")
         raise HTTPException(status_code=403, detail="Please verify your email address. We have sent a verification code to your email.")
     
     access_token = create_access_token(
@@ -408,7 +418,7 @@ def auth_verify_email(payload: VerifyEmailRequest, request: Request, db: Session
     }
 
 @app.post("/auth/resend-otp")
-def auth_resend_otp(payload: ResendOtpRequest, request: Request, db: Session = Depends(get_db)):
+def auth_resend_otp(payload: ResendOtpRequest, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     rate_limit_auth(request.client.host)
     email = payload.email.lower().strip()
     
@@ -433,11 +443,11 @@ def auth_resend_otp(payload: ResendOtpRequest, request: Request, db: Session = D
     db.add(otp_token)
     db.commit()
     
-    send_otp_email(email, otp_code, "verify_email")
+    background_tasks.add_task(send_otp_email, email, otp_code, "verify_email")
     return {"message": "A new verification code has been sent."}
 
 @app.post("/auth/forgot-password")
-def auth_forgot_password(payload: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+def auth_forgot_password(payload: ForgotPasswordRequest, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     rate_limit_auth(request.client.host)
     email = payload.email.lower().strip()
     
@@ -459,7 +469,7 @@ def auth_forgot_password(payload: ForgotPasswordRequest, request: Request, db: S
     db.add(otp_token)
     db.commit()
     
-    send_otp_email(email, otp_code, "reset_password")
+    background_tasks.add_task(send_otp_email, email, otp_code, "reset_password")
     return {"message": "If the account exists, a verification code has been sent."}
 
 @app.post("/auth/reset-password")
