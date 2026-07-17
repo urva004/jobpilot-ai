@@ -2,6 +2,11 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from app.config import SMTP_EMAIL, SMTP_PASSWORD, SMTP_HOST, SMTP_PORT, MOCK_EMAIL
+import builtins
+
+def print(*args, **kwargs):
+    kwargs.setdefault('flush', True)
+    builtins.print(*args, **kwargs)
 
 def send_otp_email(to_email: str, otp: str, purpose: str) -> bool:
     """
